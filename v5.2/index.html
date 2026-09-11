@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa Mental</title>
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <!-- Menu Superior Fixo -->
+  <div id="options-menu-container">
+    <button id="btn-options-toggle" title="Opções">⚙️ Opções</button>
+    <div id="options-dropdown" class="options-dropdown hidden">
+      <button id="btn-toggle-dark">🌙 Modo Escuro</button>
+      <button id="btn-export-png">🖼️ Salvar como Imagem (PNG)</button>
+      <button id="btn-top-undo">↩️ Desfazer (Ctrl+Z)</button>
+    </div>
+  </div>
+
+  <!-- Barra Flutuante do Nó -->
+  <div id="floating-toolbar" class="floating-panel hidden">
+    <button class="tool-btn" id="btn-delete" title="Excluir Nó">🗑️</button>
+    <button class="tool-btn" id="btn-edit-text" title="Editar Texto">✏️</button>
+  </div>
+
+  <!-- Botão '+' Rápido à Direita (Criar Nó Filho) -->
+  <button id="btn-quick-add-child" class="quick-add-btn hidden" title="Adicionar Nó Filho">+</button>
+
+  <!-- Botão '+' Inferior (Criar Nó Irmão/Separado do Nó Pai) -->
+  <button id="btn-quick-add-sibling" class="quick-add-bottom hidden" title="Adicionar Nó Irmão (Mesmo Nível)">+</button>
+
+  <!-- Botão de Colapsar/Expandir -->
+  <button id="btn-collapse-toggle" class="collapse-btn hidden" title="Expandir/Recolher"></button>
+
+  <!-- Input de Edição Inline -->
+  <input type="text" id="node-text-editor" class="text-editor hidden" />
+
+  <!-- Guia de Atalhos -->
+  <div class="shortcuts-help">
+    <strong>Atalhos:</strong><br>
+    • <code>Tab</code>: Criar nó filho<br>
+    • <code>Enter</code> ou <code>Botão + (baixo)</code>: Criar nó irmão<br>
+    • <code>Delete</code> / <code>Backspace</code>: Excluir nó<br>
+    • <code>Scroll</code>: Zoom<br>
+    • <code>Clique Roda do Mouse</code>: Mover mapa<br>
+    • <code>Duplo Clique</code>: Editar texto<br>
+    • <code>Ctrl + Z</code>: Desfazer ação<br>
+  </div>
+
+  <div id="mynetwork"></div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

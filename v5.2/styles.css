@@ -1,0 +1,198 @@
+:root {
+  --bg-color: #f8f9fa;
+  --panel-bg: #ffffff;
+  --text-color: #333333;
+  --border-color: #dddddd;
+  --accent-color: #7ee787;
+  --toolbar-bg: #212529;
+  --toolbar-text: #ffffff;
+}
+
+body.dark-mode {
+  --bg-color: #0d1117;
+  --panel-bg: #161b22;
+  --text-color: #c9d1d9;
+  --border-color: #30363d;
+  --toolbar-bg: #21262d;
+}
+
+body, html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+#mynetwork {
+  width: 100vw;
+  height: 100vh;
+}
+
+#mynetwork canvas { cursor: default; }
+#mynetwork canvas:active { cursor: grabbing; }
+
+/* Menu de Opções no Topo */
+#options-menu-container {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  z-index: 20;
+}
+
+#btn-options-toggle {
+  padding: 8px 14px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  font-weight: 600;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.options-dropdown {
+  position: absolute;
+  top: 45px;
+  left: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.options-dropdown button {
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.options-dropdown button:last-child { border-bottom: none; }
+.options-dropdown button:hover { background: rgba(0, 0, 0, 0.05); }
+body.dark-mode .options-dropdown button:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* Elementos Flutuantes */
+.floating-panel, .collapse-btn, .quick-add-btn, .quick-add-bottom, .text-editor {
+  position: absolute;
+  z-index: 10;
+}
+
+.hidden { display: none !important; }
+
+#floating-toolbar {
+  background-color: var(--toolbar-bg);
+  color: var(--toolbar-text);
+  padding: 4px 6px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  display: flex;
+  gap: 4px;
+}
+
+.tool-btn {
+  background: transparent;
+  border: none;
+  color: var(--toolbar-text);
+  font-size: 1em;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+/* Botão '+' estilo MindMup posicionado abaixo do nó */
+.quick-add-bottom {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #238636;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  transition: transform 0.15s ease;
+}
+
+.quick-add-bottom:hover {
+  background: #2ea043;
+  transform: scale(1.15);
+}
+
+/* Botão '+' Rápido à direita do nó */
+.quick-add-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1f6feb;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  transition: transform 0.15s ease;
+}
+
+.quick-add-btn:hover {
+  background: #388bfd;
+  transform: scale(1.15);
+}
+
+.collapse-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #9bf2b5;
+  border: 1px solid #7ee787;
+  color: #1b4d2e;
+  font-size: 10px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.text-editor {
+  z-index: 11;
+  background: #ffffff;
+  border: 2px solid #58a6ff;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  color: #000;
+  outline: none;
+}
+
+.shortcuts-help {
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
+  z-index: 9;
+  background: var(--panel-bg);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  pointer-events: none;
+}
