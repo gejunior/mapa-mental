@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f8f9fa">
+  <title>Mapa Mental</title>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">✦</span>
+      <span>Mapa Mental</span>
+    </div>
+
+    <div class="top-actions">
+      <!-- mensagem de salvar automaticamente -->
+      <span id="save-status" class="save-status" aria-live="polite"></span>
+
+      <button id="btn-undo" class="icon-btn" title="Desfazer (Ctrl + Z)" aria-label="Desfazer">↶</button>
+      <button id="btn-redo" class="icon-btn" title="Refazer (Ctrl + Y)" aria-label="Refazer">↷</button>
+
+      <button id="btn-options-toggle" class="options-btn" title="Opções">
+        ⚙ <span>Opções</span>
+      </button>
+
+      <div id="options-dropdown" class="options-dropdown hidden">
+        <button id="btn-toggle-dark">🌙 Modo escuro</button>
+        <button id="btn-export-png">▧ Salvar como imagem</button>
+        <button id="btn-new-map">＋ Novo mapa</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="mynetwork" aria-label="Área do mapa mental"></main>
+
+  <div id="empty-hint" class="empty-hint">
+    <strong>Comece por aqui</strong>
+    <span>Clique duas vezes para editar • Tab cria um filho • Enter cria um irmão</span>
+  </div>
+
+  <div id="floating-toolbar" class="floating-panel hidden">
+    <button id="btn-edit-text" class="tool-btn" title="Editar texto">✎ Editar</button>
+    <button id="btn-add-image" class="tool-btn" title="Inserir imagem">🖼 Imagem</button>
+    <button id="btn-delete" class="tool-btn danger" title="Excluir nó">Excluir</button>
+  </div>
+
+  <div id="node-style-panel" class="node-style-panel hidden" aria-label="Personalizar nó">
+    <div class="style-title">Personalizar</div>
+    <label class="style-row">
+      <span>Cor</span>
+      <span class="color-control">
+        <input id="node-color" type="color" value="#c3fc8d" title="Cor do nó">
+        <small id="node-color-value">#C3FC8D</small>
+      </span>
+    </label>
+    <label class="style-row">
+      <span>Tamanho</span>
+      <input id="node-size" type="range" min="11" max="24" value="14" step="1">
+    </label>
+
+    <!-- adicionando aq -->
+    <label>
+      <button id="btn-delete" class="tool-btn danger" title="Excluir nó">Excluir</button>
+    </label>
+  </div>
+
+  <button id="btn-quick-add-child" class="quick-add-btn hidden" title="Adicionar ideia filha" aria-label="Adicionar ideia filha">+</button>
+  <button id="btn-quick-add-sibling" class="quick-add-bottom hidden" title="Adicionar ideia no mesmo nível" aria-label="Adicionar ideia no mesmo nível">+</button>
+  <button id="btn-collapse-toggle" class="collapse-btn hidden" title="Expandir/Recolher" aria-label="Expandir ou recolher">−</button>
+
+  <input type="text" id="node-text-editor" class="text-editor hidden" maxlength="120" autocomplete="off" spellcheck="true">
+
+  <div class="shortcuts-help">
+    <strong>Atalhos</strong>
+    <span><kbd>Tab</kbd> Filho</span>
+    <span><kbd>Enter</kbd> Irmão</span>
+    <span><kbd>Del</kbd> Excluir</span>
+    <span><kbd>Ctrl</kbd> + <kbd>Z</kbd> Desfazer</span>
+  </div>
+
+  <!-- Input de upload de imagem oculto -->
+  <input type="file" id="image-file-input" accept="image/*" class="hidden">
+
+  <script src="app.js"></script>
+</body>
+</html>
