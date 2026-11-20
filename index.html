@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f8f9fa">
   <title>Mapa Mental</title>
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/assets/css/styles.css">
 </head>
 
 <body>
@@ -29,8 +29,8 @@
 
       <div id="options-dropdown" class="options-dropdown hidden">
         <button id="btn-toggle-dark">🌙 Modo escuro</button>
-        <button id="btn-export-png">▧ Salvar como imagem</button>
-        <button id="btn-new-map">＋ Novo mapa</button>
+        <button id="btn-export-png">Salvar como imagem</button>
+        <button id="btn-new-map">+ Novo mapa</button>
       </div>
     </div>
   </header>
@@ -43,8 +43,8 @@
   </div>
 
   <div id="floating-toolbar" class="floating-panel hidden">
-    <button id="btn-edit-text" class="tool-btn" title="Editar texto">✎ Editar</button>
-    <button id="btn-add-image" class="tool-btn" title="Inserir imagem">🖼 Imagem</button>
+    <button id="btn-edit-text" class="tool-btn" title="Editar texto">Editar</button>
+    <button id="btn-add-image" class="tool-btn" title="Inserir imagem">Imagem</button>
     <button id="btn-delete" class="tool-btn danger" title="Excluir nó">Excluir</button>
   </div>
 
@@ -70,7 +70,7 @@
 
   <button id="btn-quick-add-child" class="quick-add-btn hidden" title="Adicionar ideia filha" aria-label="Adicionar ideia filha">+</button>
   <button id="btn-quick-add-sibling" class="quick-add-bottom hidden" title="Adicionar ideia no mesmo nível" aria-label="Adicionar ideia no mesmo nível">+</button>
-  <button id="btn-collapse-toggle" class="collapse-btn hidden" title="Expandir/Recolher" aria-label="Expandir ou recolher">−</button>
+  <button id="btn-collapse-toggle" class="collapse-btn hidden" title="Expandir/Recolher" aria-label="Expandir ou recolher">-</button>
 
   <input type="text" id="node-text-editor" class="text-editor hidden" maxlength="120" autocomplete="off" spellcheck="true">
 
@@ -85,6 +85,6 @@
   <!-- Input de upload de imagem oculto -->
   <input type="file" id="image-file-input" accept="image/*" class="hidden">
 
-  <script src="app.js"></script>
+  <script src="/assets/js/main.js"></script>
 </body>
 </html>
