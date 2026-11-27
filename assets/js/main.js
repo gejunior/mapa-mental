@@ -56,6 +56,8 @@ const defaultNodes = [
     id: 1,
     label: "Meu mapa mental",
     level: 0,
+    x: 0,
+    y: 0,
     color: { background: "#8de8c7", border: "#54c59a" },
     font: { color: "#000000", size: 18, bold: true }
   }
@@ -166,6 +168,7 @@ function loadFromStorage() {
     collapsedNodes = new Set(data.collapsed || []);
 
     recalculateLevels();
+    ensureNodeCoordinates();
     updateHiddenNodes();
   } catch (error) {
     console.warn("Não foi possível carregar o mapa salvo.", error);
@@ -197,6 +200,10 @@ function createNewMap() {
 
 const options = {
   nodes: {
+    fixed: {
+      x: false,
+      y: false
+    },
     shape: "box",
     margin: 10,
     borderWidth: 1,
@@ -230,7 +237,7 @@ const options = {
 
   layout: {
     hierarchical: {
-      enabled: true,
+      enabled: false,
       direction: "LR",
       sortMethod: "directed",
       nodeSpacing: 90,
@@ -249,15 +256,7 @@ const options = {
   },
 
   physics: {
-    enabled: true,
-    solver: "hierarchicalRepulsion",
-    hierarchicalRepulsion: {
-      centralGravity: 0,
-      springLength: 100,
-      springConstant: 0.01,
-      nodeDistance: 120,
-      damping: 0.3
-    }
+    enabled: false
   }
 };
 
@@ -421,16 +420,72 @@ function recalculateLevels() {
   }
 }
 
+function ensureNodeCoordinates() {
+  const allNodes = nodes.get();
+  if (!allNodes.length) return;
+
+  const rootNode = nodes.get(1) || allNodes[0];
+  if (rootNode && (typeof rootNode.x !== "number" || typeof rootNode.y !== "number")) {
+    nodes.update({ id: rootNode.id, x: 0, y: 0 });
+  }
+
+  const updates = [];
+  const queue = [rootNode.id];
+  const visited = new Set([rootNode.id]);
+
+  while (queue.length) {
+    const parentId = queue.shift();
+    const parentNode = nodes.get(parentId);
+    const parentX = typeof parentNode?.x === "number" ? parentNode.x : 0;
+    const parentY = typeof parentNode?.y === "number" ? parentNode.y : 0;
+
+    const children = getDirectChildren(parentId);
+    const leftChildren = children.filter(cid => getNodeSide(cid) === "left");
+    const rightChildren = children.filter(cid => getNodeSide(cid) !== "left");
+
+    const assignPos = (group, isLeft) => {
+      const count = group.length;
+      const startY = parentY - ((count - 1) * 75) / 2;
+      group.forEach((cid, idx) => {
+        const cNode = nodes.get(cid);
+        if (cNode) {
+          let curX = cNode.x;
+          let curY = cNode.y;
+          let needUpdate = false;
+          if (typeof curX !== "number") {
+            curX = parentX + (isLeft ? -200 : 200);
+            needUpdate = true;
+          }
+          if (typeof curY !== "number") {
+            curY = startY + idx * 75;
+            needUpdate = true;
+          }
+          if (needUpdate) {
+            updates.push({ id: cid, x: curX, y: curY });
+          }
+        }
+        if (!visited.has(cid)) {
+          visited.add(cid);
+          queue.push(cid);
+        }
+      });
+    };
+
+    assignPos(leftChildren, true);
+    assignPos(rightChildren, false);
+  }
+
+  if (updates.length) {
+    nodes.update(updates);
+  }
+}
+
 // ------------------------------------------------------------
 // Layout / UI
 // ------------------------------------------------------------
 
 function animateLayout() {
-  network.setOptions({ physics: { enabled: true } });
-
-  setTimeout(() => {
-    network.setOptions({ physics: { enabled: false } });
-  }, 350);
+  network.redraw();
 }
 
 function hideFloatingElements() {
@@ -609,11 +664,33 @@ function addNode(parentId, side = "right", label = "") {
     newLevel = (parentNode?.level || 0) + 1;
   }
 
+  const parentPos = network.getPosition(parentId) || (parentNode ? { x: parentNode.x, y: parentNode.y } : { x: 0, y: 0 });
+  const isLeft = chosenSide === "left";
+  const siblings = getDirectChildren(parentId).filter(cid => getNodeSide(cid) === chosenSide);
+  const newX = (parentPos.x ?? 0) + (isLeft ? -200 : 200);
+  let newY;
+
+  if (siblings.length === 0) {
+    newY = parentPos.y ?? 0;
+  } else {
+    let maxSiblingY = -Infinity;
+    siblings.forEach(sibId => {
+      const sibNode = nodes.get(sibId);
+      const sibPos = network.getPosition(sibId) || (sibNode ? { x: sibNode.x, y: sibNode.y } : null);
+      if (sibPos && typeof sibPos.y === "number" && sibPos.y > maxSiblingY) {
+        maxSiblingY = sibPos.y;
+      }
+    });
+    newY = maxSiblingY !== -Infinity ? maxSiblingY + 70 : (parentPos.y ?? 0);
+  }
+
   nodes.add({
     id,
     label,
     side: chosenSide,
     level: newLevel,
+    x: newX,
+    y: newY,
     color: {
       background: "#c3fc8d",
       border: "#a5f36e"
@@ -971,6 +1048,10 @@ function handleNodeReparent(draggedNodeId, newParentId) {
 
 let activeDraggedNodeId = null;
 let activeGuides = null;
+let dragStartPointer = null;
+let dragNodeInitialPos = null;
+let currentDragX = null;
+let currentDragY = null;
 const SNAP_THRESHOLD_PX = 9;
 
 function getParentNodeId(nodeId) {
@@ -1393,6 +1474,14 @@ network.on("dragStart", params => {
     activeGuides = null;
     hideFloatingElements();
 
+    const nodePos = network.getPosition(activeDraggedNodeId);
+    dragNodeInitialPos = { x: nodePos.x, y: nodePos.y };
+    dragStartPointer = params.pointer?.canvas
+      ? { x: params.pointer.canvas.x, y: params.pointer.canvas.y }
+      : { x: nodePos.x, y: nodePos.y };
+    currentDragX = nodePos.x;
+    currentDragY = nodePos.y;
+
     if (network.interactionHandler?.drag?.selection) {
       network.interactionHandler.drag.selection.forEach(item => {
         item.xFixed = false;
@@ -1401,36 +1490,70 @@ network.on("dragStart", params => {
     }
 
     const nodeObj = network.body.nodes[activeDraggedNodeId];
-    if (nodeObj?.options?.fixed) {
-      nodeObj.options.fixed.x = false;
-      nodeObj.options.fixed.y = false;
+    if (nodeObj) {
+      if (nodeObj.options) {
+        if (!nodeObj.options.fixed || typeof nodeObj.options.fixed !== "object") {
+          nodeObj.options.fixed = { x: false, y: false };
+        } else {
+          nodeObj.options.fixed.x = false;
+          nodeObj.options.fixed.y = false;
+        }
+      }
     }
   }
 });
 
-// Intercepta antes do desenho para aplicar o snap magnético
-network.on("beforeDrawing", ctx => {
-  if (activeDraggedNodeId) {
+// Movimento contínuo durante o arrasto livre (permite ajustar horizontal e verticalmente)
+network.on("dragging", params => {
+  if (activeDraggedNodeId && dragNodeInitialPos && dragStartPointer && params.pointer?.canvas) {
+    if (network.interactionHandler?.drag?.selection) {
+      network.interactionHandler.drag.selection.forEach(item => {
+        item.xFixed = false;
+        item.yFixed = false;
+      });
+    }
+
+    const currentPointer = params.pointer.canvas;
+    const deltaX = currentPointer.x - dragStartPointer.x;
+    const deltaY = currentPointer.y - dragStartPointer.y;
+
+    const rawX = dragNodeInitialPos.x + deltaX;
+    const rawY = dragNodeInitialPos.y + deltaY;
+
+    const scale = network.getScale();
+    const { snapX, snapY, guides } = calculateGuidesAndSnapping(
+      activeDraggedNodeId,
+      rawX,
+      rawY,
+      scale
+    );
+
+    currentDragX = snapX !== null ? snapX : rawX;
+    currentDragY = snapY !== null ? snapY : rawY;
+    activeGuides = guides;
+
     const nodeObj = network.body.nodes[activeDraggedNodeId];
     if (nodeObj) {
-      const scale = network.getScale();
-      const { snapX, snapY, guides } = calculateGuidesAndSnapping(
-        activeDraggedNodeId,
-        nodeObj.x,
-        nodeObj.y,
-        scale
-      );
-
-      if (snapX !== null) {
-        nodeObj.x = snapX;
+      nodeObj.x = currentDragX;
+      nodeObj.y = currentDragY;
+      if (nodeObj.options?.fixed) {
+        nodeObj.options.fixed.x = false;
+        nodeObj.options.fixed.y = false;
       }
-      if (snapY !== null) {
-        nodeObj.y = snapY;
-      }
-      activeGuides = guides;
     }
-  } else {
-    activeGuides = null;
+
+    network.redraw();
+  }
+});
+
+// Intercepta antes do desenho para posicionar o nó nas coordenadas 2D calculadas
+network.on("beforeDrawing", ctx => {
+  if (activeDraggedNodeId && currentDragX !== null && currentDragY !== null) {
+    const nodeObj = network.body.nodes[activeDraggedNodeId];
+    if (nodeObj) {
+      nodeObj.x = currentDragX;
+      nodeObj.y = currentDragY;
+    }
   }
 });
 
@@ -1450,19 +1573,44 @@ network.on("dragEnd", params => {
 
   if (targetNodeId && targetNodeId !== draggedNodeId) {
     activeDraggedNodeId = null;
+    dragStartPointer = null;
+    dragNodeInitialPos = null;
+    currentDragX = null;
+    currentDragY = null;
     handleNodeReparent(draggedNodeId, targetNodeId);
   } else {
-    // Nó movido livremente ou com snap
+    // Salva a posição livre 2D (horizontal e vertical)
     const nodeObj = network.body.nodes[draggedNodeId];
+    const finalX = currentDragX !== null
+      ? currentDragX
+      : (nodeObj ? nodeObj.x : network.getPosition(draggedNodeId).x);
+    const finalY = currentDragY !== null
+      ? currentDragY
+      : (nodeObj ? nodeObj.y : network.getPosition(draggedNodeId).y);
+
     if (nodeObj) {
-      nodes.update({
-        id: draggedNodeId,
-        x: nodeObj.x,
-        y: nodeObj.y
-      });
-      saveToStorage();
+      nodeObj.x = finalX;
+      nodeObj.y = finalY;
+      if (nodeObj.options?.fixed) {
+        nodeObj.options.fixed.x = false;
+        nodeObj.options.fixed.y = false;
+      }
     }
+
+    nodes.update({
+      id: draggedNodeId,
+      x: finalX,
+      y: finalY,
+      fixed: { x: false, y: false }
+    });
+    saveToStorage();
+
     activeDraggedNodeId = null;
+    dragStartPointer = null;
+    dragNodeInitialPos = null;
+    currentDragX = null;
+    currentDragY = null;
+
     network.redraw();
     selectNode(draggedNodeId);
     updateUI();
@@ -1542,9 +1690,7 @@ network.on("deselectNode", () => {
   if (!isEditing) hideFloatingElements();
 });
 
-network.on("dragNode", updateUI);
 network.on("zoom", updateUI);
-network.on("dragging", updateUI);
 
 network.on("doubleClick", params => {
   if (!params.nodes.length) return;
@@ -1707,7 +1853,6 @@ loadTheme();
 loadFromStorage();
 
 network.once("afterDrawing", () => {
-  network.setOptions({ physics: { enabled: false } });
   network.fit({ animation: false });
   updateHistoryButtons();
   updateUI();
