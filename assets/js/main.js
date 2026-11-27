@@ -57,17 +57,50 @@ const fontItalicBtn = document.getElementById("btn-font-italic");
 const fontUnderlineBtn = document.getElementById("btn-font-underline");
 
 // ------------------------------------------------------------
+// Utilitários de cor
+// ------------------------------------------------------------
+
+function darkenColor(hex, factor = 0.35) {
+  if (!hex || typeof hex !== "string") return "#666666";
+  let c = hex.replace("#", "").trim();
+  if (c.length === 3) {
+    c = c.split("").map(x => x + x).join("");
+  }
+  if (c.length !== 6) return hex;
+
+  const num = parseInt(c, 16);
+  let r = (num >> 16) & 255;
+  let g = (num >> 8) & 255;
+  let b = num & 255;
+
+  r = Math.max(0, Math.min(255, Math.round(r * (1 - factor))));
+  g = Math.max(0, Math.min(255, Math.round(g * (1 - factor))));
+  b = Math.max(0, Math.min(255, Math.round(b * (1 - factor))));
+
+  const toHex = v => v.toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+// ------------------------------------------------------------
 // Dados iniciais / armazenamento
 // ------------------------------------------------------------
 
 const defaultNodes = [
   {
     id: 1,
-    label: "Meu mapa mental",
+    label: "Ideia Central",
+    side: "center",
     level: 0,
     x: 0,
     y: 0,
-    color: { background: "#8de8c7", border: "#54c59a" },
+    borderWidth: 2,
+    borderWidthSelected: 3.5,
+    color: {
+      background: "#8de8c7",
+      border: darkenColor("#8de8c7", 0.35),
+      highlight: { background: "#8de8c7", border: darkenColor("#8de8c7", 0.50) },
+      hover: { background: "#8de8c7", border: darkenColor("#8de8c7", 0.40) }
+    },
     font: { color: "#000000", size: 18, bold: true, italic: false, underline: false }
   }
 ];
@@ -179,14 +212,64 @@ function loadFromStorage() {
 
     recalculateLevels();
     ensureNodeCoordinates();
+    ensureNodeBorders();
+    ensureNodeBorderPatched();
     updateHiddenNodes();
     markNodeLabelDirty();
+    network.redraw();
   } catch (error) {
     console.warn("Não foi possível carregar o mapa salvo.", error);
     nodes.clear();
     edges.clear();
     nodes.add(defaultNodes);
     markNodeLabelDirty();
+  }
+}
+
+function ensureNodeBorders() {
+  const updates = [];
+  nodes.forEach(node => {
+    let bg = "#c3fc8d";
+    if (typeof node?.color === "string") {
+      bg = node.color;
+    } else if (node?.color?.background) {
+      bg = node.color.background;
+    }
+    const border = darkenColor(bg, 0.35);
+    const highlightBorder = darkenColor(bg, 0.50);
+    const hoverBorder = darkenColor(bg, 0.40);
+
+    if (
+      !node.color ||
+      typeof node.color === "string" ||
+      node.color.border !== border ||
+      node.color.highlight?.border !== highlightBorder ||
+      node.color.hover?.border !== hoverBorder ||
+      node.borderWidth !== 2 ||
+      node.borderWidthSelected !== 3.5
+    ) {
+      updates.push({
+        id: node.id,
+        borderWidth: 2,
+        borderWidthSelected: 3.5,
+        color: {
+          background: bg,
+          border: border,
+          highlight: {
+            background: bg,
+            border: highlightBorder
+          },
+          hover: {
+            background: bg,
+            border: hoverBorder
+          }
+        }
+      });
+    }
+  });
+  if (updates.length) {
+    nodes.update(updates);
+    saveToStorage();
   }
 }
 
@@ -200,6 +283,8 @@ function createNewMap() {
   collapsedNodes.clear();
 
   nodes.add(cloneData(defaultNodes));
+  ensureNodeBorders();
+  ensureNodeBorderPatched();
   markNodeLabelDirty();
 
   network.fit({ animation: true });
@@ -219,18 +304,31 @@ const options = {
     },
     shape: "box",
     margin: 10,
-    borderWidth: 1,
+    borderWidth: 2,
+    borderWidthSelected: 3.5,
     borderRadius: 8,
     shadow: {
       enabled: true,
-      color: "rgba(0,0,0,0.12)",
+      color: "rgba(0,0,0,0.08)",
       size: 4,
       x: 1,
       y: 1
     },
     chosen: {
-      node: (values) => {
-        values.borderWidth = 2;
+      node: (values, id, selected, hovering) => {
+        const node = nodes.get(id);
+        const bg = (typeof node?.color === "object" ? node?.color?.background : node?.color) || values.color || "#c3fc8d";
+        values.color = bg;
+        if (selected) {
+          values.borderWidth = 3.5;
+          values.borderColor = darkenColor(bg, 0.50);
+        } else if (hovering) {
+          values.borderWidth = 2;
+          values.borderColor = darkenColor(bg, 0.40);
+        } else {
+          values.borderWidth = 2;
+          values.borderColor = darkenColor(bg, 0.35);
+        }
       }
     },
     font: {
@@ -352,8 +450,53 @@ function markNodeLabelDirty(nodeId) {
   }
 }
 
+function ensureNodeBorderPatched() {
+  if (!network || !network.body || !network.body.nodes) return;
+  const sampleNode = network.body.nodes[1] || Object.values(network.body.nodes)[0];
+  if (!sampleNode) return;
+
+  const NodeProto = sampleNode.constructor.prototype;
+  if (!NodeProto || NodeProto._borderFormattingPatched) return;
+
+  const originalGetFormattingValues = NodeProto.getFormattingValues;
+  NodeProto.getFormattingValues = function() {
+    const values = originalGetFormattingValues.call(this);
+
+    let bg = "#c3fc8d";
+    if (this.options && this.options.color) {
+      if (typeof this.options.color === "string") {
+        bg = this.options.color;
+      } else if (this.options.color.background) {
+        bg = this.options.color.background;
+      }
+    } else if (values.color) {
+      bg = values.color;
+    }
+
+    values.color = bg;
+    if (this.selected) {
+      values.borderWidth = 3.5;
+      values.borderColor = darkenColor(bg, 0.50);
+    } else if (this.hover) {
+      values.borderWidth = 2;
+      values.borderColor = darkenColor(bg, 0.40);
+    } else {
+      values.borderWidth = 2;
+      values.borderColor = darkenColor(bg, 0.35);
+    }
+
+    return values;
+  };
+
+  NodeProto._borderFormattingPatched = true;
+}
+
 ensureLabelFormattingPatched();
-network.on("beforeDrawing", () => ensureLabelFormattingPatched());
+ensureNodeBorderPatched();
+network.on("beforeDrawing", () => {
+  ensureLabelFormattingPatched();
+  ensureNodeBorderPatched();
+});
 
 // ------------------------------------------------------------
 // Árvore
@@ -805,6 +948,9 @@ function addNode(parentId, side = "right", label = "", direction = "auto") {
     }
   }
 
+  const defaultBg = "#c3fc8d";
+  const defaultBorder = darkenColor(defaultBg, 0.35);
+
   nodes.add({
     id,
     label,
@@ -812,9 +958,13 @@ function addNode(parentId, side = "right", label = "", direction = "auto") {
     level: newLevel,
     x: newX,
     y: newY,
+    borderWidth: 2,
+    borderWidthSelected: 3.5,
     color: {
-      background: "#c3fc8d",
-      border: "#a5f36e"
+      background: defaultBg,
+      border: defaultBorder,
+      highlight: { background: defaultBg, border: darkenColor(defaultBg, 0.50) },
+      hover: { background: defaultBg, border: darkenColor(defaultBg, 0.40) }
     },
     font: {
       color: "#000000",
@@ -1102,13 +1252,27 @@ function updateNodeStyle() {
 
   markNodeLabelDirty(id);
 
+  const borderColor = darkenColor(bgColor, 0.35);
+  const highlightBorder = darkenColor(bgColor, 0.50);
+  const hoverBorder = darkenColor(bgColor, 0.40);
+
   nodes.update({
     id,
     label: node.label,
+    borderWidth: 2,
+    borderWidthSelected: 3.5,
     color: {
       ...(node.color || {}),
       background: bgColor,
-      border: bgColor
+      border: borderColor,
+      highlight: {
+        background: bgColor,
+        border: highlightBorder
+      },
+      hover: {
+        background: bgColor,
+        border: hoverBorder
+      }
     },
     font: {
       ...(node.font || {}),
