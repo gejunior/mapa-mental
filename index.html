@@ -51,21 +51,35 @@
   <div id="node-style-panel" class="node-style-panel hidden" aria-label="Personalizar nó">
     <div class="style-title">Personalizar</div>
     <label class="style-row">
-      <span>Cor</span>
+      <span>Fundo</span>
       <span class="color-control">
-        <input id="node-color" type="color" value="#c3fc8d" title="Cor do nó">
+        <input id="node-color" type="color" value="#c3fc8d" title="Cor de fundo do nó">
         <small id="node-color-value">#C3FC8D</small>
       </span>
     </label>
+    <label class="style-row">
+      <span>Texto</span>
+      <span class="color-control">
+        <input id="node-font-color" type="color" value="#000000" title="Cor da fonte">
+        <small id="node-font-color-value">#000000</small>
+      </span>
+    </label>
+    <div class="style-row">
+      <span>Estilo</span>
+      <div class="font-format-group">
+        <button type="button" id="btn-font-bold" class="format-btn" title="Negrito (Ctrl+B)" aria-label="Negrito"><strong>B</strong></button>
+        <button type="button" id="btn-font-italic" class="format-btn" title="Itálico (Ctrl+I)" aria-label="Itálico"><em>I</em></button>
+        <button type="button" id="btn-font-underline" class="format-btn" title="Sublinhado (Ctrl+U)" aria-label="Sublinhado"><u>U</u></button>
+      </div>
+    </div>
     <label class="style-row">
       <span>Tamanho</span>
       <input id="node-size" type="range" min="11" max="24" value="14" step="1">
     </label>
 
-    <!-- adicionando aq -->
-    <label>
+    <div class="style-actions">
       <button id="btn-delete-panel" class="tool-btn danger" title="Excluir nó">Excluir</button>
-    </label>
+    </div>
   </div>
 
   <button id="btn-quick-add-left" class="quick-add-left hidden" title="Adicionar ideia à esquerda" aria-label="Adicionar ideia à esquerda">+</button>

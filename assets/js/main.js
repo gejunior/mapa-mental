@@ -46,6 +46,11 @@ const stylePanel = document.getElementById("node-style-panel");
 const colorInput = document.getElementById("node-color");
 const sizeInput = document.getElementById("node-size");
 const colorValue = document.getElementById("node-color-value");
+const fontColorInput = document.getElementById("node-font-color");
+const fontColorValue = document.getElementById("node-font-color-value");
+const fontBoldBtn = document.getElementById("btn-font-bold");
+const fontItalicBtn = document.getElementById("btn-font-italic");
+const fontUnderlineBtn = document.getElementById("btn-font-underline");
 
 // ------------------------------------------------------------
 // Dados iniciais / armazenamento
@@ -59,7 +64,7 @@ const defaultNodes = [
     x: 0,
     y: 0,
     color: { background: "#8de8c7", border: "#54c59a" },
-    font: { color: "#000000", size: 18, bold: true }
+    font: { color: "#000000", size: 18, bold: true, italic: false, underline: false }
   }
 ];
 
@@ -91,6 +96,7 @@ function applySnapshot(snapshot) {
   recalculateLevels();
   // Oculta os descendentes de todos os nós colapsados.
   updateHiddenNodes();
+  markNodeLabelDirty();
 
   historyLock = false;
   hideFloatingElements();
@@ -170,11 +176,13 @@ function loadFromStorage() {
     recalculateLevels();
     ensureNodeCoordinates();
     updateHiddenNodes();
+    markNodeLabelDirty();
   } catch (error) {
     console.warn("Não foi possível carregar o mapa salvo.", error);
     nodes.clear();
     edges.clear();
     nodes.add(defaultNodes);
+    markNodeLabelDirty();
   }
 }
 
@@ -188,6 +196,7 @@ function createNewMap() {
   collapsedNodes.clear();
 
   nodes.add(cloneData(defaultNodes));
+  markNodeLabelDirty();
 
   network.fit({ animation: true });
   selectNode(1);
@@ -219,6 +228,11 @@ const options = {
       node: (values) => {
         values.borderWidth = 2;
       }
+    },
+    font: {
+      color: "#000000",
+      size: 14,
+      face: "system-ui, sans-serif"
     }
   },
 
@@ -261,6 +275,81 @@ const options = {
 };
 
 const network = new vis.Network(container, { nodes, edges }, options);
+
+// ------------------------------------------------------------
+// Suporte a formatação de fontes personalizada no Vis.js (Negrito / Itálico)
+// ------------------------------------------------------------
+
+function ensureLabelFormattingPatched() {
+  if (!network || !network.body || !network.body.nodes) return;
+  const sampleNode = network.body.nodes[1] || Object.values(network.body.nodes)[0];
+  if (!sampleNode || !sampleNode.labelModule) return;
+
+  const LabelProto = sampleNode.labelModule.constructor.prototype;
+  if (!LabelProto || LabelProto._formattingPatched) return;
+
+  const originalGetFormattingValues = LabelProto.getFormattingValues;
+  LabelProto.getFormattingValues = function(ctx, selected, hover, mod) {
+    const values = originalGetFormattingValues.call(this, ctx, selected, hover, mod);
+    const nodeId = this.elementOptions?.id;
+    const node = nodeId ? nodes.get(nodeId) : null;
+
+    if (node && node.font) {
+      const isBold = Boolean(node.font.bold);
+      const isItalic = Boolean(node.font.italic);
+
+      if (isBold && isItalic) {
+        values.mod = "italic bold";
+      } else if (isBold) {
+        values.mod = "bold";
+      } else if (isItalic) {
+        values.mod = "italic";
+      } else {
+        values.mod = "";
+      }
+
+      if (node.font.color) {
+        values.color = node.font.color;
+      }
+      if (node.font.size) {
+        values.size = Number(node.font.size);
+      }
+    }
+
+    let modStr = "";
+    if (values.mod) {
+      modStr = values.mod + " ";
+    }
+    const face = values.face || "system-ui, sans-serif";
+    const fontStr = `${modStr}${values.size}px ${face}`;
+    ctx.font = fontStr.replace(/["']/g, "");
+    values.font = ctx.font;
+    values.height = values.size;
+
+    return values;
+  };
+
+  LabelProto._formattingPatched = true;
+}
+
+function markNodeLabelDirty(nodeId) {
+  if (nodeId) {
+    const nObj = network?.body?.nodes?.[nodeId];
+    if (nObj?.labelModule) {
+      nObj.labelModule.labelDirty = true;
+    }
+  } else if (network?.body?.nodes) {
+    for (const id in network.body.nodes) {
+      const nObj = network.body.nodes[id];
+      if (nObj?.labelModule) {
+        nObj.labelModule.labelDirty = true;
+      }
+    }
+  }
+}
+
+ensureLabelFormattingPatched();
+network.on("beforeDrawing", () => ensureLabelFormattingPatched());
 
 // ------------------------------------------------------------
 // Árvore
@@ -617,8 +706,8 @@ function updateUI() {
   quickAddSiblingBtn.style.top = `${bottomDOM.y + 5}px`;
 
   if (!stylePanel.classList.contains("hidden")) {
-    stylePanel.style.left = `${Math.min(centerDOM.x + 15, window.innerWidth - 230)}px`;
-    stylePanel.style.top = `${Math.min(bottomDOM.y + 38, window.innerHeight - 170)}px`;
+    stylePanel.style.left = `${Math.max(10, Math.min(centerDOM.x + 15, window.innerWidth - 240))}px`;
+    stylePanel.style.top = `${Math.max(10, Math.min(bottomDOM.y + 38, window.innerHeight - 250))}px`;
   }
 
   if (!nodeTextEditor.classList.contains("hidden")) {
@@ -696,7 +785,11 @@ function addNode(parentId, side = "right", label = "") {
       border: "#a5f36e"
     },
     font: {
-      color: "#000000"
+      color: "#000000",
+      size: 14,
+      bold: false,
+      italic: false,
+      underline: false
     }
   });
 
@@ -752,6 +845,12 @@ function startEditingText(nodeId) {
   isEditing = true;
 
   nodeTextEditor.value = node.label || "";
+  nodeTextEditor.style.fontSize = `${node.font?.size || 14}px`;
+  nodeTextEditor.style.fontWeight = node.font?.bold ? "bold" : "normal";
+  nodeTextEditor.style.fontStyle = node.font?.italic ? "italic" : "normal";
+  nodeTextEditor.style.textDecoration = node.font?.underline ? "underline" : "none";
+  nodeTextEditor.style.color = node.font?.color || "#000000";
+
   nodeTextEditor.classList.remove("hidden");
   floatingToolbar.classList.add("hidden");
   stylePanel.classList.add("hidden");
@@ -948,33 +1047,89 @@ function updateNodeStyle() {
   const node = nodes.get(id);
   if (!node) return;
 
-  const color = colorInput.value;
+  const bgColor = colorInput.value;
+  const fontColor = fontColorInput.value;
   const size = Number(sizeInput.value);
 
+  const currentBg = getNodeBackground(node);
+  const currentFontColor = node.font?.color || "#000000";
+  const currentSize = Number(node.font?.size || 14);
+  const currentBold = Boolean(node.font?.bold);
+  const currentItalic = Boolean(node.font?.italic);
+  const currentUnderline = Boolean(node.font?.underline);
+
   if (
-    getNodeBackground(node) === color &&
-    Number(node.font?.size || 14) === size
+    currentBg === bgColor &&
+    currentFontColor === fontColor &&
+    currentSize === size
   ) {
     return;
   }
 
   saveHistory();
 
+  markNodeLabelDirty(id);
+
   nodes.update({
     id,
+    label: node.label,
     color: {
       ...(node.color || {}),
-      background: color,
-      border: color
+      background: bgColor,
+      border: bgColor
     },
     font: {
       ...(node.font || {}),
-      color: "#000000",
-      size
+      color: fontColor,
+      size,
+      bold: currentBold,
+      italic: currentItalic,
+      underline: currentUnderline
     }
   });
 
-  colorValue.textContent = color.toUpperCase();
+  colorValue.textContent = bgColor.toUpperCase();
+  fontColorValue.textContent = fontColor.toUpperCase();
+
+  if (isEditing && currentSelectedNodeId === id) {
+    nodeTextEditor.style.fontSize = `${size}px`;
+    nodeTextEditor.style.color = fontColor;
+  }
+
+  network.redraw();
+  saveToStorage();
+  updateUI();
+}
+
+function toggleFontStyle(prop) {
+  const id = currentSelectedNodeId;
+  const node = nodes.get(id);
+  if (!node) return;
+
+  saveHistory();
+
+  const currentVal = Boolean(node.font?.[prop]);
+  const newVal = !currentVal;
+
+  markNodeLabelDirty(id);
+
+  nodes.update({
+    id,
+    label: node.label,
+    font: {
+      ...(node.font || {}),
+      [prop]: newVal
+    }
+  });
+
+  if (isEditing && currentSelectedNodeId === id) {
+    if (prop === "bold") nodeTextEditor.style.fontWeight = newVal ? "bold" : "normal";
+    if (prop === "italic") nodeTextEditor.style.fontStyle = newVal ? "italic" : "normal";
+    if (prop === "underline") nodeTextEditor.style.textDecoration = newVal ? "underline" : "none";
+  }
+
+  syncStylePanel();
+  network.redraw();
   saveToStorage();
   updateUI();
 }
@@ -983,9 +1138,28 @@ function syncStylePanel() {
   const node = nodes.get(currentSelectedNodeId);
   if (!node) return;
 
-  colorInput.value = getNodeBackground(node);
+  const bg = getNodeBackground(node);
+  colorInput.value = bg;
+  colorValue.textContent = bg.toUpperCase();
+
+  const fontColor = node.font?.color || "#000000";
+  fontColorInput.value = fontColor;
+  fontColorValue.textContent = fontColor.toUpperCase();
+
   sizeInput.value = Number(node.font?.size || 14);
-  colorValue.textContent = colorInput.value.toUpperCase();
+
+  const isBold = Boolean(node.font?.bold);
+  const isItalic = Boolean(node.font?.italic);
+  const isUnderline = Boolean(node.font?.underline);
+
+  fontBoldBtn.classList.toggle("active", isBold);
+  fontBoldBtn.setAttribute("aria-pressed", String(isBold));
+
+  fontItalicBtn.classList.toggle("active", isItalic);
+  fontItalicBtn.setAttribute("aria-pressed", String(isItalic));
+
+  fontUnderlineBtn.classList.toggle("active", isUnderline);
+  fontUnderlineBtn.setAttribute("aria-pressed", String(isUnderline));
 }
 
 // ------------------------------------------------------------
@@ -1467,6 +1641,63 @@ function drawSmartGuides(ctx) {
   }
 }
 
+// ------------------------------------------------------------
+// Renderização de sublinhado personalizado no Canvas
+// ------------------------------------------------------------
+
+function drawUnderlines(ctx) {
+  const allNodes = nodes.get();
+  ctx.save();
+  try {
+    for (const node of allNodes) {
+      if (!node.font?.underline) continue;
+      if (node.hidden || collapsedNodes.has(node.id)) continue;
+
+      const nodeObj = network.body.nodes[node.id];
+      if (!nodeObj || nodeObj.options?.hidden) continue;
+
+      const lm = nodeObj.labelModule;
+      if (!lm || !lm.size || lm.size.width === 0 || lm.size.height === 0) continue;
+
+      const fontSize = Number(node.font?.size || 14);
+      const fontColor = node.font?.color || "#000000";
+      const lineWidth = Math.max(1.2, fontSize / 12);
+
+      ctx.strokeStyle = fontColor;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+
+      if (lm.lines && lm.lines.length > 0) {
+        let currentY = lm.size.yLine;
+        for (let i = 0; i < lm.lines.length; i++) {
+          const line = lm.lines[i];
+          if (!line) continue;
+          const lineWidthPx = line.width || lm.size.width;
+          let startX = lm.size.left;
+          if (lm.fontOptions?.align === "right") {
+            startX += lm.size.width - lineWidthPx;
+          } else if (!lm.isEdgeLabel || lm.fontOptions?.align === "center") {
+            startX += (lm.size.width - lineWidthPx) / 2;
+          }
+          const endX = startX + lineWidthPx;
+          const underlineY = currentY + fontSize * 0.52;
+          ctx.moveTo(startX, underlineY);
+          ctx.lineTo(endX, underlineY);
+          currentY += line.height || (fontSize * 1.2);
+        }
+      } else {
+        const underlineY = lm.size.top + lm.size.height - 1.5;
+        ctx.moveTo(lm.size.left, underlineY);
+        ctx.lineTo(lm.size.left + lm.size.width, underlineY);
+      }
+
+      ctx.stroke();
+    }
+  } finally {
+    ctx.restore();
+  }
+}
+
 // Evento de início do arrasto de nó
 network.on("dragStart", params => {
   if (params.nodes && params.nodes.length) {
@@ -1557,8 +1788,9 @@ network.on("beforeDrawing", ctx => {
   }
 });
 
-// Renderiza as guias visuais por cima dos nós e arestas
+// Renderiza sublinhado e guias visuais por cima dos nós e arestas
 network.on("afterDrawing", ctx => {
+  drawUnderlines(ctx);
   drawSmartGuides(ctx);
 });
 
@@ -1747,7 +1979,27 @@ nodeTextEditor.addEventListener("blur", () => finishEditingText(true));
 // ------------------------------------------------------------
 
 colorInput.addEventListener("input", updateNodeStyle);
+fontColorInput.addEventListener("input", updateNodeStyle);
 sizeInput.addEventListener("input", updateNodeStyle);
+
+fontBoldBtn.addEventListener("click", event => {
+  event.stopPropagation();
+  toggleFontStyle("bold");
+});
+
+fontItalicBtn.addEventListener("click", event => {
+  event.stopPropagation();
+  toggleFontStyle("italic");
+});
+
+fontUnderlineBtn.addEventListener("click", event => {
+  event.stopPropagation();
+  toggleFontStyle("underline");
+});
+
+stylePanel.addEventListener("click", event => {
+  event.stopPropagation();
+});
 
 // ------------------------------------------------------------
 // Atalhos
@@ -1755,10 +2007,13 @@ sizeInput.addEventListener("input", updateNodeStyle);
 
 document.addEventListener("keydown", event => {
   const active = document.activeElement;
-  const editingInput = active && active.tagName === "INPUT";
+  const isEditingNode = isEditing && active === nodeTextEditor;
+  const editingOtherInput = active && active.tagName === "INPUT" && active !== nodeTextEditor;
+
+  if (editingOtherInput) return;
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
-    if (!editingInput) {
+    if (!isEditingNode) {
       event.preventDefault();
       undo();
     }
@@ -1766,14 +2021,33 @@ document.addEventListener("keydown", event => {
   }
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
-    if (!editingInput) {
+    if (!isEditingNode) {
       event.preventDefault();
       redo();
     }
     return;
   }
 
-  if (editingInput) return;
+  if ((event.ctrlKey || event.metaKey) && (currentSelectedNodeId || isEditingNode)) {
+    const k = event.key.toLowerCase();
+    if (k === "b") {
+      event.preventDefault();
+      toggleFontStyle("bold");
+      return;
+    }
+    if (k === "i") {
+      event.preventDefault();
+      toggleFontStyle("italic");
+      return;
+    }
+    if (k === "u") {
+      event.preventDefault();
+      toggleFontStyle("underline");
+      return;
+    }
+  }
+
+  if (isEditingNode) return;
 
   if (event.key === "Tab") {
     event.preventDefault();
