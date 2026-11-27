@@ -223,11 +223,17 @@ button, input { font: inherit; }
 .collapse-btn {
   width: 20px;
   height: 20px;
-  border: 1px solid #7ee787;
-  background: #9bf2b5;
-  color: #1b4d2e;
-  font-size: 12px;
+  border: 1px solid #ff7b72;
+  background: #ffebe9;
+  color: #cf222e;
+  font-size: 13px;
   font-weight: 700;
+}
+
+body.dark-mode .collapse-btn {
+  border: 1px solid #da3633;
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
 }
 
 .text-editor {

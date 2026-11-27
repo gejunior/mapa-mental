@@ -386,8 +386,7 @@ function updateUI() {
     collapseBtn.classList.remove("hidden");
     collapseBtn.style.left = `${rightDOM.x + 8}px`;
     collapseBtn.style.top = `${rightDOM.y - 10}px`;
-    collapseBtn.textContent =
-      collapsedNodes.has(currentSelectedNodeId) ? "+" : "−";
+    collapseBtn.textContent = "−";
   } else {
     collapseBtn.classList.add("hidden");
   }
@@ -554,6 +553,16 @@ function deleteNode() {
     collapsedNodes.delete(id);
   });
 
+  const edgesToRemove = edges.get({
+    filter: edge =>
+      nodesToDelete.includes(edge.from) ||
+      nodesToDelete.includes(edge.to)
+  }).map(edge => edge.id);
+
+  if (edgesToRemove.length) {
+    edges.remove(edgesToRemove);
+  }
+
   hideFloatingElements();
   network.unselectAll();
 
@@ -609,8 +618,38 @@ addImageBtn.addEventListener("click", () => {
 imageFileInput.addEventListener("change", handleImageUpload);
 
 // ------------------------------------------------------------
-// Colapso
+// Exclusão de Ramos Filhos / Colapso
 // ------------------------------------------------------------
+
+function deleteChildBranches(parentId) {
+  if (!parentId) return;
+
+  const childrenToDelete = getChildNodes(parentId);
+  if (!childrenToDelete.length) return;
+
+  saveHistory();
+
+  childrenToDelete.forEach(id => {
+    nodes.remove(id);
+    collapsedNodes.delete(id);
+  });
+
+  const edgesToRemove = edges.get({
+    filter: edge =>
+      childrenToDelete.includes(edge.from) ||
+      childrenToDelete.includes(edge.to)
+  }).map(edge => edge.id);
+
+  if (edgesToRemove.length) {
+    edges.remove(edgesToRemove);
+  }
+
+  collapsedNodes.delete(parentId);
+
+  animateLayout();
+  updateUI();
+  saveToStorage();
+}
 
 function toggleCollapse(nodeId) {
   if (!hasDirectChildren(nodeId)) return;
@@ -840,7 +879,7 @@ network.on("doubleClick", params => {
 collapseBtn.addEventListener("click", event => {
   event.stopPropagation();
   if (currentSelectedNodeId) {
-    toggleCollapse(currentSelectedNodeId);
+    deleteChildBranches(currentSelectedNodeId);
   }
 });
 
