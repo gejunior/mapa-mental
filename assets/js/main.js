@@ -315,17 +315,47 @@ function updateHiddenNodes() {
 }
 
 function getNodeSide(nodeId) {
-  if (nodeId === 1 || nodeId === "1") return "root";
+  if (nodeId === 1 || String(nodeId) === "1") return "root";
   const node = nodes.get(nodeId);
-  if (node && node.side) return node.side;
+  if (!node) return "right";
+
+  // Se já tem side explicitamente definido
+  if (node.side === "left" || node.side === "right") return node.side;
+
+  const rootNode = nodes.get(1);
+  if (rootNode && typeof node.level === "number" && typeof rootNode.level === "number") {
+    if (node.level < rootNode.level) {
+      node.side = "left";
+      return "left";
+    }
+    if (node.level > rootNode.level) {
+      node.side = "right";
+      return "right";
+    }
+  }
+
+  // Verifica posição X no canvas em relação à raiz
+  try {
+    const rootPos = network.getPosition(1);
+    const nodePos = network.getPosition(nodeId);
+    if (nodePos && rootPos && nodePos.x < rootPos.x - 10) {
+      node.side = "left";
+      return "left";
+    }
+  } catch (e) {}
 
   let curr = nodeId;
   while (curr) {
     const parentId = getParentId(curr);
     if (!parentId) break;
-    if (parentId === 1 || parentId === "1") {
+    if (parentId === 1 || String(parentId) === "1") {
       const directChild = nodes.get(curr);
-      return directChild?.side || "right";
+      if (directChild?.side === "left") return "left";
+      if (rootNode && typeof directChild?.level === "number" && directChild.level < rootNode.level) {
+        if (directChild) directChild.side = "left";
+        return "left";
+      }
+      break;
     }
     curr = parentId;
   }
@@ -354,8 +384,8 @@ function recalculateLevels() {
       let childSide;
       let childRel;
 
-      if (parentId === 1 || parentId === "1") {
-        childSide = childNode.side === "left" ? "left" : "right";
+      if (parentId === 1 || String(parentId) === "1") {
+        childSide = getNodeSide(childId);
         childRel = childSide === "left" ? -1 : 1;
       } else {
         childSide = parentSide === "left" ? "left" : "right";
@@ -557,12 +587,31 @@ function nextNodeId() {
 function addNode(parentId, side = "right", label = "") {
   saveHistory();
 
+  const parentNode = nodes.get(parentId);
   const id = nextNodeId();
+  const chosenSide = side || (parentId === 1 || String(parentId) === "1" ? "right" : getNodeSide(parentId));
+
+  let newLevel;
+  if (chosenSide === "left") {
+    if (!parentNode || (parentNode.level || 0) <= 0) {
+      const updates = [];
+      nodes.forEach(n => {
+        updates.push({ id: n.id, level: (n.level || 0) + 1 });
+      });
+      nodes.update(updates);
+      newLevel = 0;
+    } else {
+      newLevel = (parentNode.level || 1) - 1;
+    }
+  } else {
+    newLevel = (parentNode?.level || 0) + 1;
+  }
 
   nodes.add({
     id,
     label,
-    side,
+    side: chosenSide,
+    level: newLevel,
     color: {
       background: "#c3fc8d",
       border: "#a5f36e"
