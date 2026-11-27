@@ -28,6 +28,7 @@ let saveTimer = null;
 const container = document.getElementById("mynetwork");
 const floatingToolbar = document.getElementById("floating-toolbar");
 const collapseBtn = document.getElementById("btn-collapse-toggle");
+const toggleCollapseToolbarBtn = document.getElementById("btn-toggle-collapse");
 const quickAddChildBtn = document.getElementById("btn-quick-add-child");
 const quickAddLeftBtn = document.getElementById("btn-quick-add-left");
 const quickAddTopBtn = document.getElementById("btn-quick-add-top");
@@ -540,13 +541,27 @@ function updateHiddenNodes() {
     getChildNodes(id).forEach(childId => hidden.add(childId));
   });
 
+  const nodeUpdates = [];
   nodes.forEach(node => {
     const shouldHide = hidden.has(node.id);
-
-    if (node.hidden !== shouldHide) {
-      nodes.update({ id: node.id, hidden: shouldHide });
+    if (Boolean(node.hidden) !== shouldHide) {
+      nodeUpdates.push({ id: node.id, hidden: shouldHide });
     }
   });
+  if (nodeUpdates.length) {
+    nodes.update(nodeUpdates);
+  }
+
+  const edgeUpdates = [];
+  edges.forEach(edge => {
+    const shouldHide = hidden.has(edge.to) || hidden.has(edge.from);
+    if (Boolean(edge.hidden) !== shouldHide) {
+      edgeUpdates.push({ id: edge.id, hidden: shouldHide });
+    }
+  });
+  if (edgeUpdates.length) {
+    edges.update(edgeUpdates);
+  }
 }
 
 function getNodeSide(nodeId) {
@@ -728,6 +743,7 @@ function hideFloatingElements() {
   currentSelectedNodeId = null;
   floatingToolbar.classList.add("hidden");
   collapseBtn.classList.add("hidden");
+  toggleCollapseToolbarBtn?.classList.add("hidden");
   quickAddChildBtn.classList.add("hidden");
   quickAddLeftBtn.classList.add("hidden");
   quickAddTopBtn.classList.add("hidden");
@@ -800,6 +816,17 @@ function updateUI() {
   const isRoot = currentSelectedNodeId === 1 || currentSelectedNodeId === "1";
   const nodeSide = getNodeSide(currentSelectedNodeId);
   const hasChildren = hasDirectChildren(currentSelectedNodeId);
+  const isCollapsed = collapsedNodes.has(currentSelectedNodeId);
+
+  if (toggleCollapseToolbarBtn) {
+    if (hasChildren) {
+      toggleCollapseToolbarBtn.classList.remove("hidden");
+      toggleCollapseToolbarBtn.textContent = isCollapsed ? "Expandir" : "Recolher";
+      toggleCollapseToolbarBtn.title = isCollapsed ? "Expandir ramos filhos" : "Recolher ramos filhos";
+    } else {
+      toggleCollapseToolbarBtn.classList.add("hidden");
+    }
+  }
 
   if (isRoot) {
     quickAddLeftBtn.classList.remove("hidden");
@@ -816,9 +843,13 @@ function updateUI() {
       collapseBtn.classList.remove("hidden");
       collapseBtn.style.left = `${rightDOM.x + 8}px`;
       collapseBtn.style.top = `${rightDOM.y - 10}px`;
-      collapseBtn.textContent = "−";
+      collapseBtn.textContent = isCollapsed ? "+" : "−";
+      collapseBtn.title = isCollapsed ? "Expandir ramos filhos" : "Recolher ramos filhos";
+      collapseBtn.setAttribute("aria-label", isCollapsed ? "Expandir ramos filhos" : "Recolher ramos filhos");
+      collapseBtn.classList.toggle("is-collapsed", isCollapsed);
     } else {
       collapseBtn.classList.add("hidden");
+      collapseBtn.classList.remove("is-collapsed");
     }
   } else if (nodeSide === "left") {
     quickAddLeftBtn.classList.remove("hidden");
@@ -832,9 +863,13 @@ function updateUI() {
       collapseBtn.classList.remove("hidden");
       collapseBtn.style.left = `${leftDOM.x - 28}px`;
       collapseBtn.style.top = `${leftDOM.y - 10}px`;
-      collapseBtn.textContent = "−";
+      collapseBtn.textContent = isCollapsed ? "+" : "−";
+      collapseBtn.title = isCollapsed ? "Expandir ramos filhos" : "Recolher ramos filhos";
+      collapseBtn.setAttribute("aria-label", isCollapsed ? "Expandir ramos filhos" : "Recolher ramos filhos");
+      collapseBtn.classList.toggle("is-collapsed", isCollapsed);
     } else {
       collapseBtn.classList.add("hidden");
+      collapseBtn.classList.remove("is-collapsed");
     }
   } else {
     quickAddLeftBtn.classList.add("hidden");
@@ -848,9 +883,13 @@ function updateUI() {
       collapseBtn.classList.remove("hidden");
       collapseBtn.style.left = `${rightDOM.x + 8}px`;
       collapseBtn.style.top = `${rightDOM.y - 10}px`;
-      collapseBtn.textContent = "−";
+      collapseBtn.textContent = isCollapsed ? "+" : "−";
+      collapseBtn.title = isCollapsed ? "Expandir ramos filhos" : "Recolher ramos filhos";
+      collapseBtn.setAttribute("aria-label", isCollapsed ? "Expandir ramos filhos" : "Recolher ramos filhos");
+      collapseBtn.classList.toggle("is-collapsed", isCollapsed);
     } else {
       collapseBtn.classList.add("hidden");
+      collapseBtn.classList.remove("is-collapsed");
     }
   }
 
@@ -1894,6 +1933,52 @@ function drawUnderlines(ctx) {
   }
 }
 
+// Indicadores visuais de ramos colapsados no Canvas
+function drawCollapsedBadges(ctx) {
+  if (!collapsedNodes || !collapsedNodes.size) return;
+  const scale = network.getScale();
+  ctx.save();
+  try {
+    for (const nodeId of collapsedNodes) {
+      const node = nodes.get(nodeId);
+      if (!node || node.hidden) continue;
+      const nodeObj = network.body.nodes[nodeId];
+      if (!nodeObj || nodeObj.options?.hidden) continue;
+
+      const directChildren = getDirectChildren(nodeId);
+      if (!directChildren.length) continue;
+
+      const box = network.getBoundingBox(nodeId);
+      const side = getNodeSide(nodeId);
+
+      const radius = 9 / scale;
+      let badgeX = side === "left" ? box.left - 2 / scale : box.right + 2 / scale;
+      let badgeY = (box.top + box.bottom) / 2;
+
+      ctx.beginPath();
+      ctx.arc(badgeX, badgeY, radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#0969da";
+      ctx.fill();
+      ctx.lineWidth = 1.5 / scale;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+
+      const count = directChildren.length;
+      const text = count > 1 ? `+${count}` : "+";
+      const fontSize = Math.max(9, Math.round(10 / scale));
+      ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, badgeX, badgeY);
+    }
+  } catch (e) {
+    // Ignore canvas errors
+  } finally {
+    ctx.restore();
+  }
+}
+
 // Evento de início do arrasto de nó
 network.on("dragStart", params => {
   if (params.nodes && params.nodes.length) {
@@ -1984,10 +2069,11 @@ network.on("beforeDrawing", ctx => {
   }
 });
 
-// Renderiza sublinhado e guias visuais por cima dos nós e arestas
+// Renderiza sublinhado, guias visuais e badges de colapso por cima dos nós e arestas
 network.on("afterDrawing", ctx => {
   drawUnderlines(ctx);
   drawSmartGuides(ctx);
+  drawCollapsedBadges(ctx);
 });
 
 // Evento disparado quando o usuário solta o nó arrastado
@@ -2022,6 +2108,26 @@ network.on("dragEnd", params => {
       if (nodeObj.options?.fixed) {
         nodeObj.options.fixed.x = false;
         nodeObj.options.fixed.y = false;
+      }
+    }
+
+    const deltaMoveX = finalX - (dragNodeInitialPos ? dragNodeInitialPos.x : finalX);
+    const deltaMoveY = finalY - (dragNodeInitialPos ? dragNodeInitialPos.y : finalY);
+    if ((deltaMoveX !== 0 || deltaMoveY !== 0) && collapsedNodes.has(draggedNodeId)) {
+      const childDescendants = getChildNodes(draggedNodeId);
+      const childUpdates = [];
+      childDescendants.forEach(cid => {
+        const cNode = nodes.get(cid);
+        if (cNode && typeof cNode.x === "number" && typeof cNode.y === "number") {
+          childUpdates.push({
+            id: cid,
+            x: cNode.x + deltaMoveX,
+            y: cNode.y + deltaMoveY
+          });
+        }
+      });
+      if (childUpdates.length) {
+        nodes.update(childUpdates);
       }
     }
 
@@ -2149,7 +2255,14 @@ network.on("doubleClick", params => {
 collapseBtn.addEventListener("click", event => {
   event.stopPropagation();
   if (currentSelectedNodeId) {
-    deleteChildBranches(currentSelectedNodeId);
+    toggleCollapse(currentSelectedNodeId);
+  }
+});
+
+toggleCollapseToolbarBtn?.addEventListener("click", event => {
+  event.stopPropagation();
+  if (currentSelectedNodeId) {
+    toggleCollapse(currentSelectedNodeId);
   }
 });
 
@@ -2300,6 +2413,16 @@ document.addEventListener("keydown", event => {
   if (event.key === "Enter" && currentSelectedNodeId) {
     event.preventDefault();
     addSiblingNode(event.shiftKey ? "above" : "below");
+    return;
+  }
+
+  if (
+    (event.key === "/" || event.key.toLowerCase() === "c") &&
+    currentSelectedNodeId &&
+    hasDirectChildren(currentSelectedNodeId)
+  ) {
+    event.preventDefault();
+    toggleCollapse(currentSelectedNodeId);
     return;
   }
 

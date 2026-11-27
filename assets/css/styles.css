@@ -231,17 +231,55 @@ button, input { font: inherit; }
 .collapse-btn {
   width: 20px;
   height: 20px;
-  border: 1px solid #ff7b72;
-  background: #ffebe9;
-  color: #cf222e;
+  border: 1.5px solid #0969da;
+  background: #ffffff;
+  color: #0969da;
   font-size: 13px;
   font-weight: 700;
+  line-height: 1;
+}
+
+.collapse-btn:hover {
+  background: #f0f7ff;
+  border-color: #054da7;
+  color: #054da7;
+}
+
+.collapse-btn.is-collapsed {
+  background: #0969da;
+  border-color: #054da7;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(9, 105, 218, 0.35);
+}
+
+.collapse-btn.is-collapsed:hover {
+  background: #054da7;
+  border-color: #033d8b;
+  color: #ffffff;
 }
 
 body.dark-mode .collapse-btn {
-  border: 1px solid #da3633;
-  background: rgba(248, 81, 73, 0.15);
-  color: #f85149;
+  border: 1.5px solid #58a6ff;
+  background: #161b22;
+  color: #58a6ff;
+}
+
+body.dark-mode .collapse-btn:hover {
+  background: rgba(88, 166, 255, 0.15);
+  border-color: #79b8ff;
+  color: #79b8ff;
+}
+
+body.dark-mode .collapse-btn.is-collapsed {
+  background: #1f6feb;
+  border-color: #58a6ff;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(31, 111, 235, 0.45);
+}
+
+body.dark-mode .collapse-btn.is-collapsed:hover {
+  background: #388bfd;
+  border-color: #79b8ff;
 }
 
 .text-editor {
