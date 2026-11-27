@@ -183,6 +183,7 @@ button, input { font: inherit; }
 .tool-btn.danger:hover { background: rgba(248,81,73,.25); }
 
 .quick-add-btn,
+.quick-add-left,
 .quick-add-bottom,
 .collapse-btn {
   position: absolute;
@@ -197,12 +198,14 @@ button, input { font: inherit; }
 }
 
 .quick-add-btn:hover,
+.quick-add-left:hover,
 .quick-add-bottom:hover,
 .collapse-btn:hover {
   transform: scale(1.12);
 }
 
 .quick-add-btn,
+.quick-add-left,
 .quick-add-bottom {
   width: 24px;
   height: 24px;
@@ -212,7 +215,8 @@ button, input { font: inherit; }
   font-weight: 700;
 }
 
-.quick-add-btn {
+.quick-add-btn,
+.quick-add-left {
   background: var(--blue);
 }
 

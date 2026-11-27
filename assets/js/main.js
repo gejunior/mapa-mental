@@ -29,6 +29,7 @@ const container = document.getElementById("mynetwork");
 const floatingToolbar = document.getElementById("floating-toolbar");
 const collapseBtn = document.getElementById("btn-collapse-toggle");
 const quickAddChildBtn = document.getElementById("btn-quick-add-child");
+const quickAddLeftBtn = document.getElementById("btn-quick-add-left");
 const quickAddSiblingBtn = document.getElementById("btn-quick-add-sibling");
 const nodeTextEditor = document.getElementById("node-text-editor");
 const emptyHint = document.getElementById("empty-hint");
@@ -85,6 +86,7 @@ function applySnapshot(snapshot) {
 
   collapsedNodes = new Set(snapshot.collapsed || []);
 
+  recalculateLevels();
   // Oculta os descendentes de todos os nós colapsados.
   updateHiddenNodes();
 
@@ -163,6 +165,7 @@ function loadFromStorage() {
     edges.add(data.edges || []);
     collapsedNodes = new Set(data.collapsed || []);
 
+    recalculateLevels();
     updateHiddenNodes();
   } catch (error) {
     console.warn("Não foi possível carregar o mapa salvo.", error);
@@ -311,6 +314,83 @@ function updateHiddenNodes() {
   });
 }
 
+function getNodeSide(nodeId) {
+  if (nodeId === 1 || nodeId === "1") return "root";
+  const node = nodes.get(nodeId);
+  if (node && node.side) return node.side;
+
+  let curr = nodeId;
+  while (curr) {
+    const parentId = getParentId(curr);
+    if (!parentId) break;
+    if (parentId === 1 || parentId === "1") {
+      const directChild = nodes.get(curr);
+      return directChild?.side || "right";
+    }
+    curr = parentId;
+  }
+  return "right";
+}
+
+function recalculateLevels() {
+  const rootId = 1;
+  const rootNode = nodes.get(rootId);
+  if (!rootNode) return;
+
+  const relativeLevels = new Map();
+  relativeLevels.set(String(rootId), 0);
+
+  const queue = [rootId];
+  while (queue.length) {
+    const parentId = queue.shift();
+    const parentRel = relativeLevels.get(String(parentId)) ?? 0;
+    const parentSide = getNodeSide(parentId);
+
+    const directChildren = getDirectChildren(parentId);
+    directChildren.forEach(childId => {
+      const childNode = nodes.get(childId);
+      if (!childNode) return;
+
+      let childSide;
+      let childRel;
+
+      if (parentId === 1 || parentId === "1") {
+        childSide = childNode.side === "left" ? "left" : "right";
+        childRel = childSide === "left" ? -1 : 1;
+      } else {
+        childSide = parentSide === "left" ? "left" : "right";
+        childRel = childSide === "left" ? parentRel - 1 : parentRel + 1;
+      }
+
+      relativeLevels.set(String(childId), childRel);
+      queue.push(childId);
+    });
+  }
+
+  let minRel = 0;
+  relativeLevels.forEach(val => {
+    if (val < minRel) minRel = val;
+  });
+
+  const offset = -minRel;
+
+  const updates = [];
+  relativeLevels.forEach((rel, id) => {
+    const node = nodes.get(id);
+    if (node) {
+      const newLevel = rel + offset;
+      const newSide = rel < 0 ? "left" : (rel > 0 ? "right" : "root");
+      if (node.level !== newLevel || node.side !== newSide) {
+        updates.push({ id: node.id, level: newLevel, side: newSide });
+      }
+    }
+  });
+
+  if (updates.length) {
+    nodes.update(updates);
+  }
+}
+
 // ------------------------------------------------------------
 // Layout / UI
 // ------------------------------------------------------------
@@ -328,6 +408,7 @@ function hideFloatingElements() {
   floatingToolbar.classList.add("hidden");
   collapseBtn.classList.add("hidden");
   quickAddChildBtn.classList.add("hidden");
+  quickAddLeftBtn.classList.add("hidden");
   quickAddSiblingBtn.classList.add("hidden");
   stylePanel.classList.add("hidden");
   nodeTextEditor.classList.add("hidden");
@@ -369,6 +450,11 @@ function updateUI() {
     y: (box.top + box.bottom) / 2
   });
 
+  const leftDOM = network.canvasToDOM({
+    x: box.left,
+    y: (box.top + box.bottom) / 2
+  });
+
   const bottomDOM = network.canvasToDOM({
     x: (box.left + box.right) / 2,
     y: box.bottom
@@ -382,19 +468,62 @@ function updateUI() {
       `${centerDOM.y - (box.bottom - box.top) / 2 - floatingToolbar.offsetHeight - 10}px`;
   }
 
-  if (hasDirectChildren(currentSelectedNodeId)) {
-    collapseBtn.classList.remove("hidden");
-    collapseBtn.style.left = `${rightDOM.x + 8}px`;
-    collapseBtn.style.top = `${rightDOM.y - 10}px`;
-    collapseBtn.textContent = "−";
-  } else {
-    collapseBtn.classList.add("hidden");
-  }
+  const isRoot = currentSelectedNodeId === 1 || currentSelectedNodeId === "1";
+  const nodeSide = getNodeSide(currentSelectedNodeId);
+  const hasChildren = hasDirectChildren(currentSelectedNodeId);
 
-  quickAddChildBtn.classList.remove("hidden");
-  quickAddChildBtn.style.left =
-    `${rightDOM.x + (hasDirectChildren(currentSelectedNodeId) ? 31 : 8)}px`;
-  quickAddChildBtn.style.top = `${rightDOM.y - 12}px`;
+  if (isRoot) {
+    quickAddLeftBtn.classList.remove("hidden");
+    quickAddLeftBtn.style.left = `${leftDOM.x - 32}px`;
+    quickAddLeftBtn.style.top = `${leftDOM.y - 12}px`;
+    quickAddLeftBtn.title = "Adicionar ideia à esquerda";
+
+    quickAddChildBtn.classList.remove("hidden");
+    quickAddChildBtn.style.left = `${rightDOM.x + (hasChildren ? 31 : 8)}px`;
+    quickAddChildBtn.style.top = `${rightDOM.y - 12}px`;
+    quickAddChildBtn.title = "Adicionar ideia à direita";
+
+    if (hasChildren) {
+      collapseBtn.classList.remove("hidden");
+      collapseBtn.style.left = `${rightDOM.x + 8}px`;
+      collapseBtn.style.top = `${rightDOM.y - 10}px`;
+      collapseBtn.textContent = "−";
+    } else {
+      collapseBtn.classList.add("hidden");
+    }
+  } else if (nodeSide === "left") {
+    quickAddLeftBtn.classList.remove("hidden");
+    quickAddLeftBtn.style.left = `${leftDOM.x - (hasChildren ? 55 : 32)}px`;
+    quickAddLeftBtn.style.top = `${leftDOM.y - 12}px`;
+    quickAddLeftBtn.title = "Adicionar ideia filha";
+
+    quickAddChildBtn.classList.add("hidden");
+
+    if (hasChildren) {
+      collapseBtn.classList.remove("hidden");
+      collapseBtn.style.left = `${leftDOM.x - 28}px`;
+      collapseBtn.style.top = `${leftDOM.y - 10}px`;
+      collapseBtn.textContent = "−";
+    } else {
+      collapseBtn.classList.add("hidden");
+    }
+  } else {
+    quickAddLeftBtn.classList.add("hidden");
+
+    quickAddChildBtn.classList.remove("hidden");
+    quickAddChildBtn.style.left = `${rightDOM.x + (hasChildren ? 31 : 8)}px`;
+    quickAddChildBtn.style.top = `${rightDOM.y - 12}px`;
+    quickAddChildBtn.title = "Adicionar ideia filha";
+
+    if (hasChildren) {
+      collapseBtn.classList.remove("hidden");
+      collapseBtn.style.left = `${rightDOM.x + 8}px`;
+      collapseBtn.style.top = `${rightDOM.y - 10}px`;
+      collapseBtn.textContent = "−";
+    } else {
+      collapseBtn.classList.add("hidden");
+    }
+  }
 
   quickAddSiblingBtn.classList.remove("hidden");
   quickAddSiblingBtn.style.left = `${bottomDOM.x - 12}px`;
@@ -425,7 +554,7 @@ function nextNodeId() {
   return `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function addNode(parentId, level, label = "") {
+function addNode(parentId, side = "right", label = "") {
   saveHistory();
 
   const id = nextNodeId();
@@ -433,7 +562,7 @@ function addNode(parentId, level, label = "") {
   nodes.add({
     id,
     label,
-    level,
+    side,
     color: {
       background: "#c3fc8d",
       border: "#a5f36e"
@@ -450,6 +579,7 @@ function addNode(parentId, level, label = "") {
     updateHiddenNodes();
   }
 
+  recalculateLevels();
   animateLayout();
   selectNode(id);
   startEditingText(id);
@@ -458,25 +588,32 @@ function addNode(parentId, level, label = "") {
   return id;
 }
 
-function addChildNode() {
+function addChildNode(preferredSide) {
   const parentId = currentSelectedNodeId || 1;
   const parentNode = nodes.get(parentId);
 
   if (!parentNode) return;
 
-  addNode(parentId, (parentNode.level || 0) + 1);
+  let side;
+  if (parentId === 1 || parentId === "1") {
+    side = preferredSide || "right";
+  } else {
+    side = preferredSide || getNodeSide(parentId);
+  }
+
+  addNode(parentId, side);
 }
 
 function addSiblingNode() {
-  if (!currentSelectedNodeId || currentSelectedNodeId === 1) {
-    addChildNode();
+  if (!currentSelectedNodeId || currentSelectedNodeId === 1 || currentSelectedNodeId === "1") {
+    addChildNode("right");
     return;
   }
 
   const parentId = getParentId(currentSelectedNodeId) || 1;
-  const parentNode = nodes.get(parentId);
+  const currentSide = getNodeSide(currentSelectedNodeId);
 
-  addNode(parentId, (parentNode?.level || 0) + 1);
+  addNode(parentId, currentSide);
 }
 
 function startEditingText(nodeId) {
@@ -566,6 +703,7 @@ function deleteNode() {
   hideFloatingElements();
   network.unselectAll();
 
+  recalculateLevels();
   animateLayout();
   saveToStorage();
 }
@@ -646,6 +784,7 @@ function deleteChildBranches(parentId) {
 
   collapsedNodes.delete(parentId);
 
+  recalculateLevels();
   animateLayout();
   updateUI();
   saveToStorage();
@@ -760,21 +899,16 @@ function handleNodeReparent(draggedNodeId, newParentId) {
     updateHiddenNodes();
   }
 
-  // Atualiza o nível (level) do nó e de todos os seus filhos recursivamente
-  const newParentNode = nodes.get(newParentId);
-  const levelOffset = ((newParentNode?.level || 0) + 1) - (nodes.get(draggedNodeId)?.level || 1);
+  const isTargetRoot = newParentId === 1 || newParentId === "1";
+  if (!isTargetRoot) {
+    const parentSide = getNodeSide(newParentId);
+    nodes.update({ id: draggedNodeId, side: parentSide });
+    descendants.forEach(id => {
+      nodes.update({ id, side: parentSide });
+    });
+  }
 
-  const nodesToUpdate = [draggedNodeId, ...descendants];
-  nodesToUpdate.forEach(id => {
-    const node = nodes.get(id);
-    if (node) {
-      nodes.update({
-        id,
-        level: (node.level || 0) + levelOffset
-      });
-    }
-  });
-
+  recalculateLevels();
   animateLayout();
   saveToStorage();
   updateUI();
@@ -883,9 +1017,14 @@ collapseBtn.addEventListener("click", event => {
   }
 });
 
+quickAddLeftBtn.addEventListener("click", event => {
+  event.stopPropagation();
+  addChildNode("left");
+});
+
 quickAddChildBtn.addEventListener("click", event => {
   event.stopPropagation();
-  addChildNode();
+  addChildNode("right");
 });
 
 quickAddSiblingBtn.addEventListener("click", event => {
