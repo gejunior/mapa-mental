@@ -851,7 +851,7 @@ quickAddChildBtn.addEventListener("click", event => {
 
 quickAddSiblingBtn.addEventListener("click", event => {
   event.stopPropagation();
-  addSiblingNode();
+  addChildNode();
 });
 
 document.getElementById("btn-delete").addEventListener("click", deleteNode);
