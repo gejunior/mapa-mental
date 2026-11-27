@@ -185,6 +185,7 @@ button, input { font: inherit; }
 .quick-add-btn,
 .quick-add-left,
 .quick-add-bottom,
+.quick-add-top,
 .collapse-btn {
   position: absolute;
   z-index: 20;
@@ -200,13 +201,15 @@ button, input { font: inherit; }
 .quick-add-btn:hover,
 .quick-add-left:hover,
 .quick-add-bottom:hover,
+.quick-add-top:hover,
 .collapse-btn:hover {
   transform: scale(1.12);
 }
 
 .quick-add-btn,
 .quick-add-left,
-.quick-add-bottom {
+.quick-add-bottom,
+.quick-add-top {
   width: 24px;
   height: 24px;
   border: 2px solid #fff;
@@ -220,7 +223,8 @@ button, input { font: inherit; }
   background: var(--blue);
 }
 
-.quick-add-bottom {
+.quick-add-bottom,
+.quick-add-top {
   background: var(--accent-color);
 }
 

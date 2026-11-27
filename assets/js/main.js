@@ -30,6 +30,7 @@ const floatingToolbar = document.getElementById("floating-toolbar");
 const collapseBtn = document.getElementById("btn-collapse-toggle");
 const quickAddChildBtn = document.getElementById("btn-quick-add-child");
 const quickAddLeftBtn = document.getElementById("btn-quick-add-left");
+const quickAddTopBtn = document.getElementById("btn-quick-add-top");
 const quickAddSiblingBtn = document.getElementById("btn-quick-add-sibling");
 const nodeTextEditor = document.getElementById("node-text-editor");
 const emptyHint = document.getElementById("empty-hint");
@@ -583,6 +584,7 @@ function hideFloatingElements() {
   collapseBtn.classList.add("hidden");
   quickAddChildBtn.classList.add("hidden");
   quickAddLeftBtn.classList.add("hidden");
+  quickAddTopBtn.classList.add("hidden");
   quickAddSiblingBtn.classList.add("hidden");
   stylePanel.classList.add("hidden");
   nodeTextEditor.classList.add("hidden");
@@ -631,6 +633,11 @@ function updateUI() {
     y: (box.top + box.bottom) / 2
   });
 
+  const topDOM = network.canvasToDOM({
+    x: (box.left + box.right) / 2,
+    y: box.top
+  });
+
   const bottomDOM = network.canvasToDOM({
     x: (box.left + box.right) / 2,
     y: box.bottom
@@ -641,7 +648,7 @@ function updateUI() {
       `${centerDOM.x - floatingToolbar.offsetWidth / 2}px`;
 
     floatingToolbar.style.top =
-      `${centerDOM.y - (box.bottom - box.top) / 2 - floatingToolbar.offsetHeight - 10}px`;
+      `${Math.max(10, topDOM.y - floatingToolbar.offsetHeight - 36)}px`;
   }
 
   const isRoot = currentSelectedNodeId === 1 || currentSelectedNodeId === "1";
@@ -701,6 +708,10 @@ function updateUI() {
     }
   }
 
+  quickAddTopBtn.classList.remove("hidden");
+  quickAddTopBtn.style.left = `${topDOM.x - 12}px`;
+  quickAddTopBtn.style.top = `${topDOM.y - 29}px`;
+
   quickAddSiblingBtn.classList.remove("hidden");
   quickAddSiblingBtn.style.left = `${bottomDOM.x - 12}px`;
   quickAddSiblingBtn.style.top = `${bottomDOM.y + 5}px`;
@@ -730,7 +741,7 @@ function nextNodeId() {
   return `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function addNode(parentId, side = "right", label = "") {
+function addNode(parentId, side = "right", label = "", direction = "auto") {
   saveHistory();
 
   const parentNode = nodes.get(parentId);
@@ -760,17 +771,35 @@ function addNode(parentId, side = "right", label = "") {
   let newY;
 
   if (siblings.length === 0) {
-    newY = parentPos.y ?? 0;
+    if (direction === "above") {
+      newY = (parentPos.y ?? 0) - 70;
+    } else if (direction === "below") {
+      newY = (parentPos.y ?? 0) + 70;
+    } else {
+      newY = parentPos.y ?? 0;
+    }
   } else {
-    let maxSiblingY = -Infinity;
-    siblings.forEach(sibId => {
-      const sibNode = nodes.get(sibId);
-      const sibPos = network.getPosition(sibId) || (sibNode ? { x: sibNode.x, y: sibNode.y } : null);
-      if (sibPos && typeof sibPos.y === "number" && sibPos.y > maxSiblingY) {
-        maxSiblingY = sibPos.y;
-      }
-    });
-    newY = maxSiblingY !== -Infinity ? maxSiblingY + 70 : (parentPos.y ?? 0);
+    if (direction === "above") {
+      let minSiblingY = Infinity;
+      siblings.forEach(sibId => {
+        const sibNode = nodes.get(sibId);
+        const sibPos = network.getPosition(sibId) || (sibNode ? { x: sibNode.x, y: sibNode.y } : null);
+        if (sibPos && typeof sibPos.y === "number" && sibPos.y < minSiblingY) {
+          minSiblingY = sibPos.y;
+        }
+      });
+      newY = minSiblingY !== Infinity ? minSiblingY - 70 : (parentPos.y ?? 0) - 70;
+    } else {
+      let maxSiblingY = -Infinity;
+      siblings.forEach(sibId => {
+        const sibNode = nodes.get(sibId);
+        const sibPos = network.getPosition(sibId) || (sibNode ? { x: sibNode.x, y: sibNode.y } : null);
+        if (sibPos && typeof sibPos.y === "number" && sibPos.y > maxSiblingY) {
+          maxSiblingY = sibPos.y;
+        }
+      });
+      newY = maxSiblingY !== -Infinity ? maxSiblingY + 70 : (parentPos.y ?? 0) + 70;
+    }
   }
 
   nodes.add({
@@ -809,7 +838,7 @@ function addNode(parentId, side = "right", label = "") {
   return id;
 }
 
-function addChildNode(preferredSide) {
+function addChildNode(preferredSide, direction = "auto") {
   const parentId = currentSelectedNodeId || 1;
   const parentNode = nodes.get(parentId);
 
@@ -822,19 +851,19 @@ function addChildNode(preferredSide) {
     side = preferredSide || getNodeSide(parentId);
   }
 
-  addNode(parentId, side);
+  addNode(parentId, side, "", direction);
 }
 
-function addSiblingNode() {
+function addSiblingNode(direction = "below") {
   if (!currentSelectedNodeId || currentSelectedNodeId === 1 || currentSelectedNodeId === "1") {
-    addChildNode("right");
+    addChildNode("right", direction);
     return;
   }
 
   const parentId = getParentId(currentSelectedNodeId) || 1;
   const currentSide = getNodeSide(currentSelectedNodeId);
 
-  addNode(parentId, currentSide);
+  addNode(parentId, currentSide, "", direction);
 }
 
 function startEditingText(nodeId) {
@@ -1943,12 +1972,17 @@ quickAddLeftBtn.addEventListener("click", event => {
 
 quickAddChildBtn.addEventListener("click", event => {
   event.stopPropagation();
-  addChildNode("right");
+  addChildNode("right", "auto");
+});
+
+quickAddTopBtn.addEventListener("click", event => {
+  event.stopPropagation();
+  addChildNode(undefined, "above");
 });
 
 quickAddSiblingBtn.addEventListener("click", event => {
   event.stopPropagation();
-  addChildNode();
+  addChildNode(undefined, "below");
 });
 
 document.getElementById("btn-delete")?.addEventListener("click", deleteNode);
@@ -2051,13 +2085,13 @@ document.addEventListener("keydown", event => {
 
   if (event.key === "Tab") {
     event.preventDefault();
-    addChildNode();
+    addChildNode(undefined, event.shiftKey ? "above" : "below");
     return;
   }
 
   if (event.key === "Enter" && currentSelectedNodeId) {
     event.preventDefault();
-    addSiblingNode();
+    addSiblingNode(event.shiftKey ? "above" : "below");
     return;
   }
 
