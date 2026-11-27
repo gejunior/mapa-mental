@@ -43,6 +43,9 @@ const exportPngBtn = document.getElementById("btn-export-png");
 const newMapBtn = document.getElementById("btn-new-map");
 const undoBtn = document.getElementById("btn-undo");
 const redoBtn = document.getElementById("btn-redo");
+const centerViewBtn = document.getElementById("btn-center-view");
+const centerDropdownBtn = document.getElementById("btn-center-dropdown");
+const floatingCenterBtn = document.getElementById("btn-floating-center");
 const stylePanel = document.getElementById("node-style-panel");
 const colorInput = document.getElementById("node-color");
 const sizeInput = document.getElementById("node-size");
@@ -1935,8 +1938,26 @@ newMapBtn.addEventListener("click", () => {
   createNewMap();
 });
 
+function centerView(animate = true) {
+  network.fit({
+    animation: animate
+      ? {
+          duration: 450,
+          easingFunction: "easeInOutQuad"
+        }
+      : false
+  });
+  setTimeout(updateUI, animate ? 460 : 20);
+}
+
 undoBtn.addEventListener("click", undo);
 redoBtn.addEventListener("click", redo);
+centerViewBtn?.addEventListener("click", () => centerView(true));
+centerDropdownBtn?.addEventListener("click", () => {
+  optionsDropdown.classList.add("hidden");
+  centerView(true);
+});
+floatingCenterBtn?.addEventListener("click", () => centerView(true));
 
 // ------------------------------------------------------------
 // Eventos da rede
@@ -1954,7 +1975,10 @@ network.on("deselectNode", () => {
 network.on("zoom", updateUI);
 
 network.on("doubleClick", params => {
-  if (!params.nodes.length) return;
+  if (!params.nodes.length) {
+    centerView(true);
+    return;
+  }
   startEditingText(params.nodes[0]);
 });
 
@@ -2081,7 +2105,27 @@ document.addEventListener("keydown", event => {
     }
   }
 
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    (event.key === "0" || event.code === "Digit0" || event.code === "Numpad0")
+  ) {
+    event.preventDefault();
+    centerView(true);
+    return;
+  }
+
   if (isEditingNode) return;
+
+  if (
+    event.key === " " ||
+    event.code === "Space" ||
+    event.key === "Home" ||
+    event.key.toLowerCase() === "f"
+  ) {
+    event.preventDefault();
+    centerView(true);
+    return;
+  }
 
   if (event.key === "Tab") {
     event.preventDefault();

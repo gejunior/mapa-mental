@@ -22,12 +22,14 @@
 
       <button id="btn-undo" class="icon-btn" title="Desfazer (Ctrl + Z)" aria-label="Desfazer">↶</button>
       <button id="btn-redo" class="icon-btn" title="Refazer (Ctrl + Y)" aria-label="Refazer">↷</button>
+      <button id="btn-center-view" class="icon-btn" title="Centralizar visão (Ctrl + 0 ou Espaço)" aria-label="Centralizar visão">⌖</button>
 
       <button id="btn-options-toggle" class="options-btn" title="Opções">
         ⚙ <span>Opções</span>
       </button>
 
       <div id="options-dropdown" class="options-dropdown hidden">
+        <button id="btn-center-dropdown">⌖ Centralizar visão</button>
         <button id="btn-toggle-dark">🌙 Modo escuro</button>
         <button id="btn-export-png">Salvar como imagem</button>
         <button id="btn-new-map">+ Novo mapa</button>
@@ -90,12 +92,15 @@
 
   <input type="text" id="node-text-editor" class="text-editor hidden" maxlength="120" autocomplete="off" spellcheck="true">
 
+  <button id="btn-floating-center" class="floating-center-btn" title="Centralizar visão (Ctrl + 0 ou Espaço)" aria-label="Centralizar visão">⌖</button>
+
   <div class="shortcuts-help">
     <strong>Atalhos</strong>
     <span><kbd>Tab</kbd> Filho abaixo</span>
     <span><kbd>Shift</kbd> + <kbd>Tab</kbd> Filho acima</span>
     <span><kbd>Enter</kbd> Irmão abaixo</span>
     <span><kbd>Shift</kbd> + <kbd>Enter</kbd> Irmão acima</span>
+    <span><kbd>Espaço</kbd> Centralizar</span>
     <span><kbd>Del</kbd> Excluir</span>
     <span><kbd>Ctrl</kbd> + <kbd>Z</kbd> Desfazer</span>
   </div>
