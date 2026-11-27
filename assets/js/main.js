@@ -459,6 +459,8 @@ function selectNode(id) {
 }
 
 function updateUI() {
+  if (activeDraggedNodeId) return;
+
   if (
     currentSelectedNodeId === null ||
     !nodes.get(currentSelectedNodeId) ||
@@ -963,17 +965,507 @@ function handleNodeReparent(draggedNodeId, newParentId) {
   updateUI();
 }
 
+// ------------------------------------------------------------
+// Guias Inteligentes de Alinhamento e Simetria de Espaço (Smart Guides)
+// ------------------------------------------------------------
+
+let activeDraggedNodeId = null;
+let activeGuides = null;
+const SNAP_THRESHOLD_PX = 9;
+
+function getParentNodeId(nodeId) {
+  const inEdges = edges.get({
+    filter: edge => String(edge.to) === String(nodeId)
+  });
+  return inEdges.length ? inEdges[0].from : null;
+}
+
+function calculateGuidesAndSnapping(draggedId, currentX, currentY, scale = 1.0) {
+  const threshold = SNAP_THRESHOLD_PX / scale;
+  let snapX = null;
+  let snapY = null;
+  let hGuide = null;
+  let vGuide = null;
+  let symYGuide = null;
+  let symXGuide = null;
+
+  const parentId = getParentNodeId(draggedId);
+  const allNodeIds = nodes.getIds();
+  const otherNodes = [];
+
+  for (const id of allNodeIds) {
+    if (id === draggedId) continue;
+    if (collapsedNodes.has(id)) continue;
+    const nObj = network.body.nodes[id];
+    if (!nObj || nObj.options.hidden) continue;
+    const pos = network.getPosition(id);
+    otherNodes.push({
+      id,
+      x: pos.x,
+      y: pos.y,
+      isParent: parentId && String(id) === String(parentId)
+    });
+  }
+
+  // 1. Alinhamento Horizontal (mesmo Y que célula anterior/pai, ou nós acima/abaixo)
+  let bestHDiff = threshold + 1;
+  let bestHNode = null;
+  for (const n of otherNodes) {
+    const rawDiff = Math.abs(currentY - n.y);
+    const weightedDiff = n.isParent ? rawDiff * 0.8 : rawDiff;
+    if (rawDiff <= threshold && weightedDiff < bestHDiff) {
+      bestHDiff = weightedDiff;
+      bestHNode = n;
+      snapY = n.y;
+    }
+  }
+
+  if (bestHNode) {
+    const alignedNodes = otherNodes.filter(n => Math.abs(n.y - bestHNode.y) <= 2 / scale);
+    const allX = [currentX, bestHNode.x, ...alignedNodes.map(n => n.x)];
+    hGuide = {
+      y: bestHNode.y,
+      x1: Math.min(...allX) - 35 / scale,
+      x2: Math.max(...allX) + 35 / scale,
+      points: [
+        { x: currentX, y: bestHNode.y },
+        { x: bestHNode.x, y: bestHNode.y },
+        ...alignedNodes.map(n => ({ x: n.x, y: bestHNode.y }))
+      ]
+    };
+  }
+
+  // 2. Alinhamento Vertical (mesmo X que nós da mesma coluna ou nós acima/abaixo)
+  let bestVDiff = threshold + 1;
+  let bestVNode = null;
+  for (const n of otherNodes) {
+    const diff = Math.abs(currentX - n.x);
+    if (diff <= threshold && diff < bestVDiff) {
+      bestVDiff = diff;
+      bestVNode = n;
+      snapX = n.x;
+    }
+  }
+
+  if (bestVNode) {
+    const alignedNodes = otherNodes.filter(n => Math.abs(n.x - bestVNode.x) <= 2 / scale);
+    const allY = [currentY, bestVNode.y, ...alignedNodes.map(n => n.y)];
+    vGuide = {
+      x: bestVNode.x,
+      y1: Math.min(...allY) - 35 / scale,
+      y2: Math.max(...allY) + 35 / scale,
+      points: [
+        { x: bestVNode.x, y: currentY },
+        { x: bestVNode.x, y: bestVNode.y },
+        ...alignedNodes.map(n => ({ x: bestVNode.x, y: n.y }))
+      ]
+    };
+  }
+
+  // 3. Simetria de Espaço Vertical (Y) entre células (mesma coluna / ramos adjacentes)
+  const colNodes = otherNodes.filter(n => Math.abs(n.x - currentX) < 140 / scale);
+  let bestSymYDiff = threshold + 1;
+
+  for (let i = 0; i < colNodes.length; i++) {
+    for (let j = i + 1; j < colNodes.length; j++) {
+      const a = colNodes[i].y < colNodes[j].y ? colNodes[i] : colNodes[j];
+      const b = colNodes[i].y < colNodes[j].y ? colNodes[j] : colNodes[i];
+      const gap = b.y - a.y;
+      if (gap < 25 / scale) continue;
+
+      // Configuração A: Nó arrastado no meio exato entre A e B
+      const midTarget = (a.y + b.y) / 2;
+      const midDiff = Math.abs(currentY - midTarget);
+      if (midDiff <= threshold && midDiff < bestSymYDiff) {
+        bestSymYDiff = midDiff;
+        if (bestHNode === null || midDiff < bestHDiff) {
+          snapY = midTarget;
+        }
+        symYGuide = {
+          type: "between",
+          targetY: midTarget,
+          gap: gap / 2,
+          span1: { start: a.y, end: midTarget },
+          span2: { start: midTarget, end: b.y },
+          x: (a.x + b.x) / 2
+        };
+      }
+
+      // Configuração B: Nó arrastado abaixo de B (sequência A -> B -> Nó)
+      const belowTarget = b.y + gap;
+      const belowDiff = Math.abs(currentY - belowTarget);
+      if (belowDiff <= threshold && belowDiff < bestSymYDiff) {
+        bestSymYDiff = belowDiff;
+        if (bestHNode === null || belowDiff < bestHDiff) {
+          snapY = belowTarget;
+        }
+        symYGuide = {
+          type: "after",
+          targetY: belowTarget,
+          gap: gap,
+          span1: { start: a.y, end: b.y },
+          span2: { start: b.y, end: belowTarget },
+          x: (a.x + b.x) / 2
+        };
+      }
+
+      // Configuração C: Nó arrastado acima de A (sequência Nó -> A -> B)
+      const aboveTarget = a.y - gap;
+      const aboveDiff = Math.abs(currentY - aboveTarget);
+      if (aboveDiff <= threshold && aboveDiff < bestSymYDiff) {
+        bestSymYDiff = aboveDiff;
+        if (bestHNode === null || aboveDiff < bestHDiff) {
+          snapY = aboveTarget;
+        }
+        symYGuide = {
+          type: "before",
+          targetY: aboveTarget,
+          gap: gap,
+          span1: { start: aboveTarget, end: a.y },
+          span2: { start: a.y, end: b.y },
+          x: (a.x + b.x) / 2
+        };
+      }
+    }
+  }
+
+  // 4. Simetria de Espaço Horizontal (X) entre células
+  const rowNodes = otherNodes.filter(n => Math.abs(n.y - currentY) < 140 / scale);
+  let bestSymXDiff = threshold + 1;
+
+  for (let i = 0; i < rowNodes.length; i++) {
+    for (let j = i + 1; j < rowNodes.length; j++) {
+      const a = rowNodes[i].x < rowNodes[j].x ? rowNodes[i] : rowNodes[j];
+      const b = rowNodes[i].x < rowNodes[j].x ? rowNodes[j] : rowNodes[i];
+      const gap = b.x - a.x;
+      if (gap < 25 / scale) continue;
+
+      const midTarget = (a.x + b.x) / 2;
+      const midDiff = Math.abs(currentX - midTarget);
+      if (midDiff <= threshold && midDiff < bestSymXDiff) {
+        bestSymXDiff = midDiff;
+        if (bestVNode === null || midDiff < bestVDiff) {
+          snapX = midTarget;
+        }
+        symXGuide = {
+          type: "between",
+          targetX: midTarget,
+          gap: gap / 2,
+          span1: { start: a.x, end: midTarget },
+          span2: { start: midTarget, end: b.x },
+          y: (a.y + b.y) / 2
+        };
+      }
+
+      const afterTarget = b.x + gap;
+      const afterDiff = Math.abs(currentX - afterTarget);
+      if (afterDiff <= threshold && afterDiff < bestSymXDiff) {
+        bestSymXDiff = afterDiff;
+        if (bestVNode === null || afterDiff < bestVDiff) {
+          snapX = afterTarget;
+        }
+        symXGuide = {
+          type: "after",
+          targetX: afterTarget,
+          gap: gap,
+          span1: { start: a.x, end: b.x },
+          span2: { start: b.x, end: afterTarget },
+          y: (a.y + b.y) / 2
+        };
+      }
+
+      const beforeTarget = a.x - gap;
+      const beforeDiff = Math.abs(currentX - beforeTarget);
+      if (beforeDiff <= threshold && beforeDiff < bestSymXDiff) {
+        bestSymXDiff = beforeDiff;
+        if (bestVNode === null || beforeDiff < bestVDiff) {
+          snapX = beforeTarget;
+        }
+        symXGuide = {
+          type: "before",
+          targetX: beforeTarget,
+          gap: gap,
+          span1: { start: beforeTarget, end: a.x },
+          span2: { start: a.x, end: b.x },
+          y: (a.y + b.y) / 2
+        };
+      }
+    }
+  }
+
+  const hasGuides = hGuide || vGuide || symYGuide || symXGuide;
+  return {
+    snapX,
+    snapY,
+    guides: hasGuides ? {
+      horizontal: hGuide,
+      vertical: vGuide,
+      symmetryY: symYGuide,
+      symmetryX: symXGuide
+    } : null
+  };
+}
+
+function drawSmartGuides(ctx) {
+  if (!activeGuides) return;
+
+  const scale = network.getScale();
+  const lw = 1.5 / scale;
+  const isDark = document.body.classList.contains("dark-mode");
+  const alignColor = isDark ? "#58a6ff" : "#0969da";
+  const symColor = isDark ? "#c084fc" : "#8b5cf6";
+  const symBg = isDark ? "rgba(124, 58, 237, 0.95)" : "rgba(109, 40, 217, 0.95)";
+
+  ctx.save();
+  try {
+    // 1. Linha de alinhamento horizontal
+    if (activeGuides.horizontal) {
+      const h = activeGuides.horizontal;
+      ctx.beginPath();
+      ctx.setLineDash([5 / scale, 4 / scale]);
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = alignColor;
+      ctx.moveTo(h.x1, h.y);
+      ctx.lineTo(h.x2, h.y);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      for (const pt of h.points) {
+        ctx.beginPath();
+        ctx.arc(pt.x, h.y, 4 / scale, 0, Math.PI * 2);
+        ctx.fillStyle = alignColor;
+        ctx.fill();
+        ctx.lineWidth = 1.5 / scale;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+      }
+    }
+
+    // 2. Linha de alinhamento vertical
+    if (activeGuides.vertical) {
+      const v = activeGuides.vertical;
+      ctx.beginPath();
+      ctx.setLineDash([5 / scale, 4 / scale]);
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = alignColor;
+      ctx.moveTo(v.x, v.y1);
+      ctx.lineTo(v.x, v.y2);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      for (const pt of v.points) {
+        ctx.beginPath();
+        ctx.arc(v.x, pt.y, 4 / scale, 0, Math.PI * 2);
+        ctx.fillStyle = alignColor;
+        ctx.fill();
+        ctx.lineWidth = 1.5 / scale;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+      }
+    }
+
+    // 3. Indicadores de Simetria de Espaço Vertical (Y)
+    if (activeGuides.symmetryY) {
+      const s = activeGuides.symmetryY;
+      const dimX = s.x;
+      const tickSize = 6 / scale;
+
+      const drawSpanGuideY = (span, gapVal) => {
+        const yStart = Math.min(span.start, span.end);
+        const yEnd = Math.max(span.start, span.end);
+        const midY = (yStart + yEnd) / 2;
+
+        ctx.beginPath();
+        ctx.setLineDash([3 / scale, 2 / scale]);
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = symColor;
+        ctx.moveTo(dimX, yStart);
+        ctx.lineTo(dimX, yEnd);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(dimX - tickSize, yStart);
+        ctx.lineTo(dimX + tickSize, yStart);
+        ctx.moveTo(dimX - tickSize, yEnd);
+        ctx.lineTo(dimX + tickSize, yEnd);
+        ctx.stroke();
+
+        const label = Math.round(gapVal) + "px";
+        const fontSize = 11 / scale;
+        ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        const textWidth = ctx.measureText(label).width;
+        const pillW = textWidth + 12 / scale;
+        const pillH = 18 / scale;
+        const pillX = dimX - pillW / 2;
+        const pillY = midY - pillH / 2;
+        const r = 4 / scale;
+
+        ctx.beginPath();
+        if (typeof ctx.roundRect === "function") {
+          ctx.roundRect(pillX, pillY, pillW, pillH, r);
+        } else {
+          ctx.rect(pillX, pillY, pillW, pillH);
+        }
+        ctx.fillStyle = symBg;
+        ctx.fill();
+        ctx.lineWidth = 1 / scale;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, dimX, midY);
+      };
+
+      drawSpanGuideY(s.span1, s.gap);
+      drawSpanGuideY(s.span2, s.gap);
+    }
+
+    // 4. Indicadores de Simetria de Espaço Horizontal (X)
+    if (activeGuides.symmetryX) {
+      const s = activeGuides.symmetryX;
+      const dimY = s.y;
+      const tickSize = 6 / scale;
+
+      const drawSpanGuideX = (span, gapVal) => {
+        const xStart = Math.min(span.start, span.end);
+        const xEnd = Math.max(span.start, span.end);
+        const midX = (xStart + xEnd) / 2;
+
+        ctx.beginPath();
+        ctx.setLineDash([3 / scale, 2 / scale]);
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = symColor;
+        ctx.moveTo(xStart, dimY);
+        ctx.lineTo(xEnd, dimY);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(xStart, dimY - tickSize);
+        ctx.lineTo(xStart, dimY + tickSize);
+        ctx.moveTo(xEnd, dimY - tickSize);
+        ctx.lineTo(xEnd, dimY + tickSize);
+        ctx.stroke();
+
+        const label = Math.round(gapVal) + "px";
+        const fontSize = 11 / scale;
+        ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        const textWidth = ctx.measureText(label).width;
+        const pillW = textWidth + 12 / scale;
+        const pillH = 18 / scale;
+        const pillX = midX - pillW / 2;
+        const pillY = dimY - pillH / 2;
+        const r = 4 / scale;
+
+        ctx.beginPath();
+        if (typeof ctx.roundRect === "function") {
+          ctx.roundRect(pillX, pillY, pillW, pillH, r);
+        } else {
+          ctx.rect(pillX, pillY, pillW, pillH);
+        }
+        ctx.fillStyle = symBg;
+        ctx.fill();
+        ctx.lineWidth = 1 / scale;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, midX, dimY);
+      };
+
+      drawSpanGuideX(s.span1, s.gap);
+      drawSpanGuideX(s.span2, s.gap);
+    }
+  } finally {
+    ctx.restore();
+  }
+}
+
+// Evento de início do arrasto de nó
+network.on("dragStart", params => {
+  if (params.nodes && params.nodes.length) {
+    activeDraggedNodeId = params.nodes[0];
+    activeGuides = null;
+    hideFloatingElements();
+
+    if (network.interactionHandler?.drag?.selection) {
+      network.interactionHandler.drag.selection.forEach(item => {
+        item.xFixed = false;
+        item.yFixed = false;
+      });
+    }
+
+    const nodeObj = network.body.nodes[activeDraggedNodeId];
+    if (nodeObj?.options?.fixed) {
+      nodeObj.options.fixed.x = false;
+      nodeObj.options.fixed.y = false;
+    }
+  }
+});
+
+// Intercepta antes do desenho para aplicar o snap magnético
+network.on("beforeDrawing", ctx => {
+  if (activeDraggedNodeId) {
+    const nodeObj = network.body.nodes[activeDraggedNodeId];
+    if (nodeObj) {
+      const scale = network.getScale();
+      const { snapX, snapY, guides } = calculateGuidesAndSnapping(
+        activeDraggedNodeId,
+        nodeObj.x,
+        nodeObj.y,
+        scale
+      );
+
+      if (snapX !== null) {
+        nodeObj.x = snapX;
+      }
+      if (snapY !== null) {
+        nodeObj.y = snapY;
+      }
+      activeGuides = guides;
+    }
+  } else {
+    activeGuides = null;
+  }
+});
+
+// Renderiza as guias visuais por cima dos nós e arestas
+network.on("afterDrawing", ctx => {
+  drawSmartGuides(ctx);
+});
+
 // Evento disparado quando o usuário solta o nó arrastado
 network.on("dragEnd", params => {
   if (!params.nodes.length) return;
 
   const draggedNodeId = params.nodes[0];
-  
-  // Identifica se o nó foi solto em cima de outro nó
   const targetNodeId = network.getNodeAt(params.pointer.DOM);
 
+  activeGuides = null;
+
   if (targetNodeId && targetNodeId !== draggedNodeId) {
+    activeDraggedNodeId = null;
     handleNodeReparent(draggedNodeId, targetNodeId);
+  } else {
+    // Nó movido livremente ou com snap
+    const nodeObj = network.body.nodes[draggedNodeId];
+    if (nodeObj) {
+      nodes.update({
+        id: draggedNodeId,
+        x: nodeObj.x,
+        y: nodeObj.y
+      });
+      saveToStorage();
+    }
+    activeDraggedNodeId = null;
+    network.redraw();
+    selectNode(draggedNodeId);
+    updateUI();
   }
 });
 
@@ -1081,7 +1573,8 @@ quickAddSiblingBtn.addEventListener("click", event => {
   addChildNode();
 });
 
-document.getElementById("btn-delete").addEventListener("click", deleteNode);
+document.getElementById("btn-delete")?.addEventListener("click", deleteNode);
+document.getElementById("btn-delete-panel")?.addEventListener("click", deleteNode);
 
 document.getElementById("btn-edit-text").addEventListener("click", () => {
   if (currentSelectedNodeId) {
